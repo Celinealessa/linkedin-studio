@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-5 -->
+<!-- v20260603-6 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -604,10 +604,8 @@ function saveApp() {
 
 const APP = loadApp();
 
-// ── Seed data: pre-load PAYBACK/Dominik Dommick if no client has working monthly data
-(function seedPaybackData() {
-  const hasGoodData = (APP.clients||[]).some(c => c.monthly && c.monthly.labels && c.monthly.labels.length > 0);
-  if (hasGoodData) return; // already have working data — don't overwrite
+// ── PAYBACK Daten — immer aktuell halten (überschreibt alten/kaputten Stand)
+(function ensurePaybackClient() {
   const paybackMonthly = {"labels":["Jun 25","Jul 25","Aug 25","Sep 25","Okt 25","Nov 25","Dez 25","Jan 26","Feb 26","Mrz 26","Apr 26","Mai 26","Jun 26"],"impressions":[17874,9363,4208,63803,67830,42019,154526,54329,58040,38940,49931,93292,4833],"engagements":[542,303,204,1704,1542,858,1660,1087,1120,1113,1417,969,120],"followers":[79,45,64,456,234,171,378,203,184,229,543,287,12],"postsPerMonth":[0,0,0,0,0,0,0,0,0,0,0,0,0],"_sortKeys":["2025-06","2025-07","2025-08","2025-09","2025-10","2025-11","2025-12","2026-01","2026-02","2026-03","2026-04","2026-05","2026-06"],"totalFollowers":4487};
   const paybackPosts = [
     {caption:'„Ich habe so viele PAYBACK Punkte, der nächste Wasserkocher geht auf meinen Nacken."',label:'Wasserkocher · Dez 2025',impr:88810,likes:0,comments:32,shares:0,eng:381,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_ich-habe-so-viele-payback-punkte-der-n%C3%A4chste-share-7404056454661320706-AcMt',type:'humor'},
@@ -619,23 +617,23 @@ const APP = loadApp();
     {caption:'25 Jahre PAYBACK – Wir sind 2025 25 Jahre alt geworden.',label:'25 Jahre PAYBACK · Dez 2025',impr:16209,likes:0,comments:10,shares:0,eng:277,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_25-jahre-payback-wir-sind-2025-25-jahre-share-7401244451303661569-IM2H',type:'story'},
     {caption:'„Wir verkaufen Schallplatten noch wie früher und machen Streaming gleich dazu."',label:'Schallplatten · Sep 2025',impr:14382,likes:0,comments:0,shares:0,eng:231,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_wir-verkaufen-schallplatten-noch-wie-fr%C3%BCher-share-7370744728075726849-Fivf',type:'story'}
   ];
-  const paybackClient = {
+  if (!APP.clients) APP.clients = [];
+  // Finde oder erstelle PAYBACK Client — überschreibe immer monthly+posts (Daten sollen aktuell sein)
+  let idx = APP.clients.findIndex(c => c.id === 'payback2025');
+  if (idx < 0) idx = APP.clients.findIndex(c => c.ci && (c.ci.client||'').toLowerCase().includes('payback'));
+  const base = idx >= 0 ? APP.clients[idx] : {};
+  const fresh = {
+    ...base,
     id: 'payback2025',
-    ci:{ client:'PAYBACK', person:'Dominik Dommick', period:'Jun 2025 – Jun 2026', primary:'#003087', accent:'#FFD100', logo:'P', logoImg:'', agency:'Branding People GmbH' },
+    ci: { client:'PAYBACK', person:'Dominik Dommick', period:'Jun 2025 – Jun 2026', primary:'#003087', accent:'#FFD100', logo:'P', logoImg:'', agency:'Branding People GmbH', ...(base.ci||{}) },
     monthly: paybackMonthly,
     posts: paybackPosts,
     _loadedFiles: ['AggregateAnalytics_Dominik Dommick_2025-06-04_2026-06-03.xlsx'],
     updatedAt: Date.now()
   };
-  // Find existing PAYBACK client and update it, or prepend as new
-  const existing = (APP.clients||[]).findIndex(c => c.ci && c.ci.client === 'PAYBACK');
-  if (existing >= 0) {
-    APP.clients[existing] = { ...APP.clients[existing], ...paybackClient };
-  } else {
-    if (!APP.clients) APP.clients = [];
-    APP.clients.unshift(paybackClient);
-  }
-  saveApp();
+  if (idx >= 0) APP.clients[idx] = fresh;
+  else APP.clients.unshift(fresh);
+  try { localStorage.setItem('linkedin_studio_v1', JSON.stringify(APP)); } catch(e) {}
 })();
 
 // ── Auto-fix: repair clients where monthly was saved with 0 labels (broken parse from old code)
