@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-27 -->
+<!-- v20260603-28 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-27';
+  const MY_V = 'v20260603-28';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -557,7 +557,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-27</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-28</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -2132,6 +2132,18 @@ function readFlopPosts() {
     return { caption:cap, label:inp[1]?.value.trim(), impr:toN(inp[2]?.value), likes:toN(inp[3]?.value), comments:toN(inp[4]?.value), shares:toN(inp[5]?.value), eng:toN(inp[6]?.value), url:inp[7]?.value.trim(), type:sel?.value||'story' };
   }).filter(Boolean).sort((a,b)=>a.impr-b.impr);
 }
+function switchPostView(mode) {
+  const isTop = mode === 'top';
+  document.getElementById('postViewTop').style.display  = isTop ? '' : 'none';
+  document.getElementById('postViewFlop').style.display = isTop ? 'none' : '';
+  document.getElementById('postChartCard').style.display = isTop ? '' : 'none';
+  document.getElementById('btnShowTop').style.background  = isTop ? '#5B63FE' : '#fff';
+  document.getElementById('btnShowTop').style.color       = isTop ? '#fff' : 'var(--muted)';
+  document.getElementById('btnShowFlop').style.background = isTop ? '#fff' : '#C0392B';
+  document.getElementById('btnShowFlop').style.color      = isTop ? 'var(--muted)' : '#fff';
+  document.getElementById('postSectionLbl').textContent   = isTop ? '🏆 Top-Posts · Beste Beiträge aus dem Zeitraum' : '📉 Flop-Posts · Schwächste Beiträge aus dem Zeitraum';
+}
+
 function sortPostsTable(tbodyId, col, dir) {
   const tbody = document.getElementById(tbodyId);
   if (!tbody) return;
@@ -2315,66 +2327,90 @@ function buildDashHTML(c, ins) {
     </div>
   </div>`;
 
-  if (c.posts?.length) {
-    html += `
-  <div class="section-hd"><span class="section-lbl">🏆 Top-Posts · Beste Beiträge aus dem Zeitraum</span><div class="section-line"></div></div>
-  <div class="chart-card" style="margin-bottom:14px">
-    <div class="chart-title">Top ${c.posts.length} Posts nach Impressionen · Quelle: LinkedIn Analytics</div>
-    <div class="chart-sub">Alle Metriken direkt aus dem Export · Farbe = Content-Typ</div>
-    <div class="legend" style="margin-bottom:14px">
-      <div class="legend-item"><div class="legend-dot" style="background:#00A86B"></div>Humor / Persönlich</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#5B63FE"></div>Tech / Trend</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#7B68EE"></div>Networking</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#6B7A99"></div>Story / Brand</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#FF6600"></div>Branchenwissen</div>
-    </div>
-    <div class="posts-list">`;
-    c.posts.forEach((post,i) => {
-      const tm = TYPE_META[post.type]||TYPE_META.story;
-      const rc = i===0?'g':i===1?'s':i===2?'b':'';
-      const metaParts = [];
-      if (post.label) metaParts.push(post.label);
-      if (post.likes) metaParts.push('👍 '+post.likes.toLocaleString('de-DE'));
-      if (post.comments) metaParts.push('💬 '+post.comments.toLocaleString('de-DE'));
-      if (post.shares) metaParts.push('🔁 '+post.shares.toLocaleString('de-DE'));
-      if (post.eng && !post.likes) metaParts.push('⚡ '+post.eng.toLocaleString('de-DE')+' Engagements');
-      html += `<div class="post-row" onclick="openPostOverlay(${i})" style="cursor:pointer" title="Details anzeigen">
-        <div class="post-rank ${rc}">#${i+1}</div>
-        <div style="flex:1;min-width:0"><div class="post-cap">${post.caption||'—'}${post.url?' 🔗':''}</div><div class="post-meta">${metaParts.join(' · ')}</div></div>
-        <div class="post-pill" style="background:${tm.bg};color:${tm.col}">${tm.label}</div>
-        <div class="post-impr" style="color:${p}">${fmt(post.impr)}<div style="font-size:9px;color:var(--muted);font-weight:400">Impressionen</div></div>
-      </div>`;
-    });
-    html += `</div></div>
-  <div class="chart-card" style="margin-bottom:1.5rem">
-    <div class="chart-title">Impressionen Top-Posts — visualisiert</div>
-    <div style="position:relative;height:${Math.min(400,c.posts.length*44+60)}px"><canvas id="cPosts"></canvas></div>
-  </div>`;
-  }
+  if (c.posts?.length || c.flopPosts?.length) {
+    // Build top posts HTML
+    let topPostsHTML = '';
+    if (c.posts?.length) {
+      topPostsHTML += `
+      <div class="legend" style="margin-bottom:14px">
+        <div class="legend-item"><div class="legend-dot" style="background:#00A86B"></div>Humor / Persönlich</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#5B63FE"></div>Tech / Trend</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#7B68EE"></div>Networking</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#6B7A99"></div>Story / Brand</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#FF6600"></div>Branchenwissen</div>
+      </div>
+      <div class="posts-list">`;
+      c.posts.forEach((post,i) => {
+        const tm = TYPE_META[post.type]||TYPE_META.story;
+        const rc = i===0?'g':i===1?'s':i===2?'b':'';
+        const metaParts = [];
+        if (post.label) metaParts.push(post.label);
+        if (post.likes) metaParts.push('👍 '+post.likes.toLocaleString('de-DE'));
+        if (post.comments) metaParts.push('💬 '+post.comments.toLocaleString('de-DE'));
+        if (post.shares) metaParts.push('🔁 '+post.shares.toLocaleString('de-DE'));
+        if (post.eng && !post.likes) metaParts.push('⚡ '+post.eng.toLocaleString('de-DE')+' Engagements');
+        topPostsHTML += `<div class="post-row" onclick="openPostOverlay(${i})" style="cursor:pointer" title="Details anzeigen">
+          <div class="post-rank ${rc}">#${i+1}</div>
+          <div style="flex:1;min-width:0"><div class="post-cap">${post.caption||'—'}${post.url?' 🔗':''}</div><div class="post-meta">${metaParts.join(' · ')}</div></div>
+          <div class="post-pill" style="background:${tm.bg};color:${tm.col}">${tm.label}</div>
+          <div class="post-impr" style="color:${p}">${fmt(post.impr)}<div style="font-size:9px;color:var(--muted);font-weight:400">Impressionen</div></div>
+        </div>`;
+      });
+      topPostsHTML += `</div>`;
+    } else {
+      topPostsHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Keine Top-Posts eingetragen.</div>`;
+    }
 
-  if (c.flopPosts?.length) {
+    // Build flop posts HTML
+    let flopPostsHTML = '';
+    if (c.flopPosts?.length) {
+      flopPostsHTML += `<div class="posts-list">`;
+      c.flopPosts.forEach((post,i) => {
+        const tm = TYPE_META[post.type]||TYPE_META.story;
+        const metaParts = [];
+        if (post.label) metaParts.push(post.label);
+        if (post.likes) metaParts.push('👍 '+post.likes.toLocaleString('de-DE'));
+        if (post.comments) metaParts.push('💬 '+post.comments.toLocaleString('de-DE'));
+        if (post.shares) metaParts.push('🔁 '+post.shares.toLocaleString('de-DE'));
+        if (post.eng && !post.likes) metaParts.push('⚡ '+post.eng.toLocaleString('de-DE')+' Engagements');
+        flopPostsHTML += `<div class="post-row" onclick="openFlopPostOverlay(${i})" style="cursor:pointer;opacity:0.85" title="Details anzeigen">
+          <div class="post-rank" style="background:#FFF0F0;color:#C0392B;border-color:#F5C6CB">#${i+1}</div>
+          <div style="flex:1;min-width:0"><div class="post-cap">${post.caption||'—'}${post.url?' 🔗':''}</div><div class="post-meta">${metaParts.join(' · ')}</div></div>
+          <div class="post-pill" style="background:${tm.bg};color:${tm.col}">${tm.label}</div>
+          <div class="post-impr" style="color:#C0392B">${fmt(post.impr)}<div style="font-size:9px;color:var(--muted);font-weight:400">Impressionen</div></div>
+        </div>`;
+      });
+      flopPostsHTML += `</div>`;
+    } else {
+      flopPostsHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Keine Flop-Posts eingetragen.</div>`;
+    }
+
     html += `
-  <div class="section-hd"><span class="section-lbl">📉 Flop-Posts · Schwächste Beiträge aus dem Zeitraum</span><div class="section-line"></div></div>
-  <div class="chart-card" style="margin-bottom:1.5rem">
-    <div class="chart-title">Bottom ${c.flopPosts.length} Posts nach Impressionen · Quelle: LinkedIn Analytics</div>
-    <div class="chart-sub">Diese Posts haben die geringste Reichweite erzielt — wichtig für Content-Learnings</div>
-    <div class="posts-list">`;
-    c.flopPosts.forEach((post,i) => {
-      const tm = TYPE_META[post.type]||TYPE_META.story;
-      const metaParts = [];
-      if (post.label) metaParts.push(post.label);
-      if (post.likes) metaParts.push('👍 '+post.likes.toLocaleString('de-DE'));
-      if (post.comments) metaParts.push('💬 '+post.comments.toLocaleString('de-DE'));
-      if (post.shares) metaParts.push('🔁 '+post.shares.toLocaleString('de-DE'));
-      if (post.eng && !post.likes) metaParts.push('⚡ '+post.eng.toLocaleString('de-DE')+' Engagements');
-      html += `<div class="post-row" onclick="openFlopPostOverlay(${i})" style="cursor:pointer;opacity:0.85" title="Details anzeigen">
-        <div class="post-rank" style="background:#FFF0F0;color:#C0392B;border-color:#F5C6CB">#${i+1}</div>
-        <div style="flex:1;min-width:0"><div class="post-cap">${post.caption||'—'}${post.url?' 🔗':''}</div><div class="post-meta">${metaParts.join(' · ')}</div></div>
-        <div class="post-pill" style="background:${tm.bg};color:${tm.col}">${tm.label}</div>
-        <div class="post-impr" style="color:#C0392B">${fmt(post.impr)}<div style="font-size:9px;color:var(--muted);font-weight:400">Impressionen</div></div>
-      </div>`;
-    });
-    html += `</div></div>`;
+  <div class="section-hd"><span class="section-lbl" id="postSectionLbl">🏆 Top-Posts · Beste Beiträge aus dem Zeitraum</span><div class="section-line"></div></div>
+  <div class="chart-card" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div class="chart-title" id="postCardTitle" style="margin-bottom:2px">Top ${c.posts?.length||0} Posts nach Impressionen · Quelle: LinkedIn Analytics</div>
+        <div class="chart-sub" id="postCardSub">Alle Metriken direkt aus dem Export · Farbe = Content-Typ</div>
+      </div>
+      <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-shrink:0">
+        <button id="btnShowTop" onclick="switchPostView('top')"
+          style="padding:6px 16px;font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;background:#5B63FE;color:#fff;transition:background .15s">
+          🏆 Top-Posts
+        </button>
+        <button id="btnShowFlop" onclick="switchPostView('flop')"
+          style="padding:6px 16px;font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;background:#fff;color:var(--muted);transition:background .15s">
+          📉 Flop-Posts
+        </button>
+      </div>
+    </div>
+    <div id="postViewTop">${topPostsHTML}</div>
+    <div id="postViewFlop" style="display:none">${flopPostsHTML}</div>
+  </div>
+  <div class="chart-card" style="margin-bottom:1.5rem" id="postChartCard">
+    <div class="chart-title">Impressionen Top-Posts — visualisiert</div>
+    <div style="position:relative;height:${Math.min(400,(c.posts?.length||0)*44+60)}px"><canvas id="cPosts"></canvas></div>
+  </div>`;
   }
 
   html += `
