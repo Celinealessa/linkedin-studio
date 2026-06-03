@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-29 -->
+<!-- v20260603-30 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-29';
+  const MY_V = 'v20260603-30';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -557,7 +557,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-29</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-30</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -779,7 +779,7 @@ function renderHome(container) {
   }
 
   const cards = APP.clients.map(c => {
-    const ins = c.monthly ? analyze(c.monthly, c.splitLabel, c.ci.primary) : null;
+    const ins = c.monthly ? analyze(c.monthly, c.splitLabel, c.ci.primary, c.posts, c.flopPosts) : null;
     const status = !c.monthly ? 'empty' : 'ready';
     const statusLabel = { empty:'Keine Daten', draft:'Entwurf', ready:'Dashboard bereit' }[status];
     const statusClass = { empty:'status-empty', draft:'status-draft', ready:'status-ready' }[status];
@@ -2196,7 +2196,7 @@ function renderDash(container) {
   if (!c.monthly?.labels?.length) { navigate('edit', ROUTE.clientId, 'data'); return; }
 
   const ci = c.ci;
-  const ins = analyze(c.monthly, c.splitLabel, c.ci.primary);
+  const ins = analyze(c.monthly, c.splitLabel, c.ci.primary, c.posts, c.flopPosts);
   const p = ci.primary;
 
   container.innerHTML = `
@@ -2232,9 +2232,10 @@ function buildDashHTML(c, ins) {
   const p = ci.primary;
   const acc = ci.accent;
 
-  // Use stored recommendations if available, otherwise use auto-generated
+  // Recommendations: use stored (manual edits) or auto-generated
   if (!c.recommendations) c.recommendations = ins.recommendations;
-  if (!c.contentMix) c.contentMix = ins.contentMix;
+  // ContentMix: always recalculate from latest posts data (never use stale cache)
+  c.contentMix = ins.contentMix;
   const recs = c.recommendations;
   const mix  = c.contentMix;
 
@@ -2513,7 +2514,59 @@ const charts = CHARTS;
 // ══════════════════════════════════════════
 //  ANALYSIS ENGINE
 // ══════════════════════════════════════════
-function analyze(monthly, splitLabel, primary) {
+function analyzeContentMix(posts, flopPosts, primary) {
+  if (!posts || posts.length === 0) {
+    // Fallback defaults
+    return [
+      { num:'2×', color:'#00A86B', title:'Persönlich / Humor',  sub:'Reichweite maximieren' },
+      { num:'2×', color:primary,   title:'Tech / Trend',        sub:'Neue Zielgruppen erschließen' },
+      { num:'1×', color:'#C89500', title:'Meinung / Daten',     sub:'Thought Leadership aufbauen' },
+      { num:'3×', color:'#6E7A9F', title:'Brand / Story',       sub:'Basis-Rhythmus halten' },
+    ];
+  }
+
+  // Group top posts by type → avg impressions + avg engagement
+  const typeStats = {};
+  posts.forEach(p => {
+    const t = p.type || 'story';
+    if (!typeStats[t]) typeStats[t] = { imprSum:0, engSum:0, count:0 };
+    typeStats[t].imprSum += p.impr || 0;
+    typeStats[t].engSum  += (p.eng || 0) + (p.likes || 0) + (p.comments || 0) + (p.shares || 0);
+    typeStats[t].count   += 1;
+  });
+  // Penalty: types that appear in flopPosts lose score
+  (flopPosts || []).forEach(p => {
+    const t = p.type || 'story';
+    if (!typeStats[t]) typeStats[t] = { imprSum:0, engSum:0, count:0 };
+    typeStats[t].imprSum -= (p.impr || 0) * 0.5; // reduce by half their flop impact
+  });
+
+  const ranked = Object.entries(typeStats).map(([type, s]) => {
+    const avgImpr = s.count > 0 ? s.imprSum / s.count : 0;
+    const avgEng  = s.count > 0 ? s.engSum  / s.count : 0;
+    const score   = avgImpr + avgEng * 5;
+    return { type, avgImpr: Math.max(0,avgImpr), score, count: s.count };
+  }).sort((a,b) => b.score - a.score);
+
+  const meta = {
+    humor:   { color:'#00A86B', title:'Persönlich / Humor',   base:'Emotionale Reichweite' },
+    tech:    { color:'#5B63FE', title:'Tech / Trend',          base:'Neue Zielgruppen' },
+    network: { color:'#7B68EE', title:'Networking',            base:'Community aufbauen' },
+    story:   { color:'#6B7A99', title:'Brand / Story',         base:'Vertrauen aufbauen' },
+    branch:  { color:'#FF6600', title:'Branchenwissen',        base:'Thought Leadership' },
+  };
+
+  const total = ranked.length;
+  return ranked.map((r, i) => {
+    const m = meta[r.type] || { color:'#6B7A99', title: r.type, base:'Kontinuität' };
+    // Assign frequencies: #1 = 3-4×, #2 = 2-3×, rest = 1-2×
+    const num = i === 0 ? '3–4×' : i === 1 ? '2–3×' : i < 3 ? '1–2×' : '1×';
+    const avgLabel = r.avgImpr > 0 ? `Ø ${fmt(Math.round(r.avgImpr))} Impr.` : m.base;
+    return { num, color: m.color, title: m.title, sub: avgLabel };
+  });
+}
+
+function analyze(monthly, splitLabel, primary, posts, flopPosts) {
   const {labels,impressions,followers,engagements,postsPerMonth} = monthly;
   const n = labels.length;
   const totalImpr = sum(impressions), totalFoll = sum(followers), totalEng = sum(engagements);
@@ -2578,12 +2631,8 @@ function analyze(monthly, splitLabel, primary) {
       rec: avgPostsPerMonth < 6 ? `Frequenz schrittweise auf 6–8× / Monat erhöhen` : `Qualität weiter steigern: starke Hook in Zeile 1`
     }
   ];
-  const contentMix = [
-    { num:'1×', color:'#00A86B', title:'Persönlich / Humor', sub:'Reichweite maximieren' },
-    { num:'2×', color:p, title:'Extern / Trend', sub:'Neue Zielgruppen erschließen' },
-    { num:'1×', color:'#C89500', title:'Meinung / Daten', sub:'Thought Leadership aufbauen' },
-    { num:'4+', color:'#6E7A9F', title:'Brand / Events', sub:'Basis-Rhythmus halten' },
-  ];
+  // Auto-analyze content mix from posts data
+  const contentMix = analyzeContentMix(posts, flopPosts, p);
   const totalFollowersNow = monthly.totalFollowers || 0; // from AggregateAnalytics (e.g. 4487)
   return { totalImpr, totalFoll, totalEng, avgEngRate, avgPostsPerMonth, bestImprIdx, trendPct, trend, engLabel, engColor, beforeAfter, recommendations, contentMix, n, totalFollowersNow };
 }
