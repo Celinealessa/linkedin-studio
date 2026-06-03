@@ -822,14 +822,17 @@ function renderEdit(container) {
 
       <!-- STATUS: noch keine Daten -->
       <div id="uploadBox" style="${c.monthly?'display:none':''}">
-        <!-- Hidden file input OUTSIDE the clickable zone to avoid click-loop -->
-        <input type="file" id="xlsFile" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleMultiFiles(this.files)">
 
-        <div style="
-          border:3px dashed #5B63FE;border-radius:16px;
+        <!-- Label wraps the input → zuverlässigste Methode für Datei-Öffnen in allen Browsern -->
+        <label for="xlsFile" id="uploadZone" style="
+          display:block;border:3px dashed #5B63FE;border-radius:16px;
           background:linear-gradient(135deg,#F4F5FF,#ECEEFF);
           padding:3rem 2rem;text-align:center;cursor:pointer;
-          transition:all .2s" id="uploadZone">
+          transition:all .2s"
+          ondragover="event.preventDefault();this.style.background='#E0E2FF';this.style.borderStyle='solid'"
+          ondragleave="this.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)';this.style.borderStyle='dashed'"
+          ondrop="event.preventDefault();this.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)';this.style.borderStyle='dashed';handleMultiFiles(event.dataTransfer.files)">
+
           <div id="uploadZoneInner">
             <div style="font-size:56px;margin-bottom:12px">📂</div>
             <div style="font-size:20px;font-weight:700;color:#5B63FE;margin-bottom:6px">Excel / CSV hochladen</div>
@@ -840,15 +843,18 @@ function renderEdit(container) {
               <span style="background:#5B63FE;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.xls</span>
               <span style="background:#8B93FF;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.csv</span>
             </div>
-            <div>
-              <button class="btn btn-primary" onclick="event.stopPropagation();document.getElementById('xlsFile').click()">📂 Dateien auswählen</button>
+            <div style="pointer-events:none;display:inline-block;background:#5B63FE;color:#fff;font-weight:700;padding:10px 28px;border-radius:10px;font-size:15px">
+              📂 Dateien auswählen
             </div>
           </div>
           <div id="uploadZoneLoading" style="display:none">
             <div style="font-size:40px;margin-bottom:12px">⏳</div>
             <div style="font-size:16px;font-weight:600;color:#5B63FE" id="uploadLoadingText">Dateien werden geladen…</div>
           </div>
-        </div>
+        </label>
+
+        <!-- Input direkt nach dem Label, gleiche ID -->
+        <input type="file" id="xlsFile" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleMultiFiles(this.files)">
 
         <div style="text-align:center;margin-top:10px;font-size:12px;color:#6E7A9F">
           Kein passendes Format?
@@ -864,14 +870,14 @@ function renderEdit(container) {
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
             <div style="font-size:13px;font-weight:700;color:var(--text)">📂 Geladene Dateien</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn btn-sm" onclick="document.getElementById('xlsFile2').click()" style="border-color:#5B63FE;color:#5B63FE;font-weight:600">
+              <label for="xlsFile2" class="btn btn-sm" style="border-color:#5B63FE;color:#5B63FE;font-weight:600;cursor:pointer;margin:0">
                 ➕ Weitere Datei hinzufügen
-              </button>
+              </label>
+              <input type="file" id="xlsFile2" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleMultiFiles(this.files, true)">
               <button class="btn btn-sm" onclick="clearAllData()" style="border-color:#E53E3E;color:#E53E3E">
                 🗑️ Alle Daten löschen
               </button>
             </div>
-            <input type="file" id="xlsFile2" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleMultiFiles(this.files, true)">
           </div>
           <div id="fileChipList" style="display:flex;flex-wrap:wrap;gap:6px">
             ${(c._loadedFiles||[]).length ? (c._loadedFiles||[]).map((f,i)=>`
@@ -958,21 +964,7 @@ function renderEdit(container) {
   restorePostsRows(c.posts || []);
   updateSplitSelect(c.monthly?.labels || [], c.splitLabel);
 
-  // Setup drag&drop + click on upload zone
-  const uz = document.getElementById('uploadZone');
-  if (uz) {
-    uz.addEventListener('click', e => {
-      if (e.target.tagName === 'BUTTON') return; // button handles its own click
-      document.getElementById('xlsFile').click();
-    });
-    uz.addEventListener('dragover', e => { e.preventDefault(); uz.style.background='#E0E2FF'; uz.style.borderStyle='solid'; });
-    uz.addEventListener('dragleave', () => { uz.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)'; uz.style.borderStyle='dashed'; });
-    uz.addEventListener('drop', e => {
-      e.preventDefault();
-      uz.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)'; uz.style.borderStyle='dashed';
-      if (e.dataTransfer.files.length) handleMultiFiles(e.dataTransfer.files);
-    });
-  }
+  // uploadZone is now a <label for="xlsFile"> — click opens file dialog automatically, no JS needed
   // Restore split section visibility if data exists
   const ss = document.getElementById('splitSection');
   if (ss && c.monthly?.labels?.length) ss.style.display = '';
