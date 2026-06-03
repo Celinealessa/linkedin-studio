@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-25 -->
+<!-- v20260603-26 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-25';
+  const MY_V = 'v20260603-26';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -557,7 +557,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-25</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-26</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -1026,7 +1026,13 @@ function renderEdit(container) {
     <!-- Step: Posts -->
     <div id="stepPosts" style="${ROUTE.step==='posts'?'':'display:none'}">
       <div class="edit-section">
-        <div class="edit-section-title">🏆 Top-Posts <span style="font-size:11px;color:var(--muted);font-weight:400">— beste Beiträge</span></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="edit-section-title" style="margin-bottom:0">🏆 Top-Posts <span style="font-size:11px;color:var(--muted);font-weight:400">— beste Beiträge</span></div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm" onclick="sortPostsTable('postsBody','impr','desc')" title="Höchste Impressionen zuerst">▼ Höchste Impr.</button>
+            <button class="btn btn-sm" onclick="sortPostsTable('postsBody','impr','asc')" title="Niedrigste Impressionen zuerst">▲ Niedrigste Impr.</button>
+          </div>
+        </div>
         <div class="dt-wrap">
           <table class="dt">
             <thead><tr>
@@ -1045,6 +1051,34 @@ function renderEdit(container) {
           </table>
         </div>
         <div class="add-row" onclick="addPostRow()">＋ Top-Post hinzufügen</div>
+      </div>
+
+      <div class="edit-section" style="margin-top:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="edit-section-title" style="margin-bottom:0">📉 Flop-Posts <span style="font-size:11px;color:var(--muted);font-weight:400">— schlechteste Beiträge (auto-erkannt aus Excel)</span></div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm" onclick="sortPostsTable('flopPostsBody','impr','asc')" title="Niedrigste Impressionen zuerst">▲ Niedrigste Impr.</button>
+            <button class="btn btn-sm" onclick="sortPostsTable('flopPostsBody','impr','desc')" title="Höchste Impressionen zuerst">▼ Höchste Impr.</button>
+          </div>
+        </div>
+        <div class="dt-wrap">
+          <table class="dt">
+            <thead><tr>
+              <th class="t-left" style="min-width:200px">Caption / Zitat</th>
+              <th class="t-left" style="min-width:130px">Label (Titel · Datum)</th>
+              <th style="min-width:90px">Impressionen</th>
+              <th style="min-width:70px">Likes</th>
+              <th style="min-width:70px">Kommentare</th>
+              <th style="min-width:70px">Shares</th>
+              <th style="min-width:80px">Engagement</th>
+              <th class="t-left" style="min-width:130px">URL</th>
+              <th style="min-width:140px">Content-Typ</th>
+              <th></th>
+            </tr></thead>
+            <tbody id="flopPostsBody"></tbody>
+          </table>
+        </div>
+        <div class="add-row" onclick="addFlopPostRow()">＋ Flop-Post manuell hinzufügen</div>
       </div>
 
       <div style="display:flex;justify-content:space-between;margin-top:16px">
@@ -2101,6 +2135,20 @@ function readFlopPosts() {
     return { caption:cap, label:inp[1]?.value.trim(), impr:toN(inp[2]?.value), likes:toN(inp[3]?.value), comments:toN(inp[4]?.value), shares:toN(inp[5]?.value), eng:toN(inp[6]?.value), url:inp[7]?.value.trim(), type:sel?.value||'story' };
   }).filter(Boolean).sort((a,b)=>a.impr-b.impr);
 }
+function sortPostsTable(tbodyId, col, dir) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  const rows = [...tbody.querySelectorAll('tr')];
+  // col: 'impr' = input index 2, 'eng' = index 6
+  const idx = col === 'eng' ? 6 : 2;
+  rows.sort((a, b) => {
+    const va = parseFloat(a.querySelectorAll('input')[idx]?.value) || 0;
+    const vb = parseFloat(b.querySelectorAll('input')[idx]?.value) || 0;
+    return dir === 'asc' ? va - vb : vb - va;
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+
 function readPosts() {
   return [...document.querySelectorAll('#postsBody tr')].map(tr => {
     const inp = tr.querySelectorAll('input');
