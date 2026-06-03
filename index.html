@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-20 -->
+<!-- v20260603-21 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: fetch latest version silently, reload if newer
 (function(){
-  const MY_V = 'v20260603-20';
+  const MY_V = 'v20260603-21';
   if (sessionStorage.getItem('_lv') === MY_V) return; // already checked this session
   sessionStorage.setItem('_lv', MY_V);
   fetch(location.pathname + '?_t=' + Date.now(), {cache:'no-store'})
@@ -1042,29 +1042,6 @@ function renderEdit(container) {
         <div class="add-row" onclick="addPostRow()">＋ Top-Post hinzufügen</div>
       </div>
 
-      <div class="edit-section" style="margin-top:16px;border-color:#FECACA">
-        <div class="edit-section-title" style="color:#C0392B">📉 Flop-Posts <span style="font-size:11px;color:var(--muted);font-weight:400">— schwächste Beiträge</span></div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Trage hier die 5 Posts mit den wenigsten Impressionen manuell ein.</div>
-        <div class="dt-wrap">
-          <table class="dt">
-            <thead><tr>
-              <th class="t-left" style="min-width:200px">Caption / Zitat</th>
-              <th class="t-left" style="min-width:130px">Label (Titel · Datum)</th>
-              <th style="min-width:90px">Impressionen</th>
-              <th style="min-width:70px">Likes</th>
-              <th style="min-width:70px">Kommentare</th>
-              <th style="min-width:70px">Shares</th>
-              <th style="min-width:80px">Engagement</th>
-              <th class="t-left" style="min-width:130px">URL</th>
-              <th style="min-width:140px">Content-Typ</th>
-              <th></th>
-            </tr></thead>
-            <tbody id="flopPostsBody"></tbody>
-          </table>
-        </div>
-        <div class="add-row" onclick="addFlopPostRow()" style="color:#C0392B;border-color:#FECACA">＋ Flop-Post hinzufügen</div>
-      </div>
-
       <div style="display:flex;justify-content:space-between;margin-top:16px">
         <button class="btn" onclick="autoSavePosts();setStep('data')">← Zurück</button>
         <button class="btn btn-primary" onclick="savePostsAndDash()">🚀 Dashboard generieren</button>
@@ -1564,12 +1541,14 @@ function parseLinkedInAggregateAnalytics(wb) {
         autoPosts.push({impr:p.impr, eng:p.eng, likes:0, comm:0, shar:0,
           caption: caption || p.url.slice(-60), date:p.date, url:p.url});
       });
-    // Flop posts: bottom 5 by impressions (only posts with impr > 0)
-    const withImpr = allSorted.filter(p => p.impr > 0);
-    autoFlopPosts.push(...withImpr.slice(-5).reverse().map(p => ({
-      impr:p.impr, eng:p.eng, likes:0, comm:0, shar:0,
-      caption: extractCaptionFromUrl(p.url) || p.url.slice(-60), date:p.date, url:p.url
-    })));
+    // Flop posts: sort by impr ASC + eng ASC, take bottom 5
+    const flopSorted = [...postMap.values()]
+      .filter(p => p.impr > 0 || p.eng > 0)
+      .sort((a,b) => (a.impr + a.eng) - (b.impr + b.eng));
+    flopSorted.slice(0, 5).forEach(p => {
+      autoFlopPosts.push({impr:p.impr, eng:p.eng, likes:0, comm:0, shar:0,
+        caption: extractCaptionFromUrl(p.url) || p.url.slice(-60), date:p.date, url:p.url});
+    });
   }
 
   if (!d.labels.length) return null;
@@ -1846,13 +1825,12 @@ function confirmImport() {
     c.posts = [...(c.posts||[]), ...newPosts].sort((a,b)=>b.impr-a.impr).slice(0,10);
   }
   if (autoFlopPosts && autoFlopPosts.length) {
-    const existingFlop = new Set((c.flopPosts||[]).map(p=>p.caption));
-    const newFlops = autoFlopPosts.filter(p => !existingFlop.has(p.caption)).map(p => ({
+    // Always replace flop posts with freshly detected ones from the file
+    c.flopPosts = autoFlopPosts.map(p => ({
       caption: p.caption, label: p.date || '',
       impr: p.impr, likes: p.likes || 0, comments: p.comm || 0,
       shares: p.shar || 0, eng: p.eng || 0, url: p.url || '', type: 'story'
-    }));
-    c.flopPosts = [...(c.flopPosts||[]), ...newFlops].sort((a,b)=>a.impr-b.impr).slice(0,5);
+    })).sort((a,b)=>a.impr-b.impr).slice(0,5);
   }
   const newNames = (_multiResults||[]).map(r => r._filename).filter(Boolean);
   if (!c._loadedFiles) c._loadedFiles = [];
