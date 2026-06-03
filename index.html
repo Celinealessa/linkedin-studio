@@ -828,16 +828,17 @@ function renderEdit(container) {
           onclick="document.getElementById('xlsFile').click()"
           ondragover="event.preventDefault();this.style.background='#E0E2FF'"
           ondragleave="this.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)'"
-          ondrop="event.preventDefault();this.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)';if(event.dataTransfer.files[0])handleDataFile2(event.dataTransfer.files[0])">
+          ondrop="event.preventDefault();this.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)';handleMultiFiles(event.dataTransfer.files)">
           <div style="font-size:56px;margin-bottom:12px">📂</div>
-          <div style="font-size:20px;font-weight:700;color:#5B63FE;margin-bottom:6px">Excel-Datei hochladen</div>
-          <div style="font-size:14px;color:#6E7A9F;margin-bottom:16px">Hier klicken oder Datei reinziehen</div>
+          <div style="font-size:20px;font-weight:700;color:#5B63FE;margin-bottom:6px">Excel-Dateien hochladen</div>
+          <div style="font-size:14px;color:#6E7A9F;margin-bottom:8px">Hier klicken oder Dateien reinziehen — <strong>mehrere gleichzeitig möglich!</strong></div>
+          <div style="font-size:12px;color:#8B93FF;margin-bottom:16px">z.B. Beitragsanalyse + Follower-Daten + mehrere Zeiträume</div>
           <div style="display:inline-flex;gap:8px">
             <span style="background:#5B63FE;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.xlsx</span>
             <span style="background:#5B63FE;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.xls</span>
             <span style="background:#8B93FF;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.csv</span>
           </div>
-          <input type="file" id="xlsFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleDataFile2(this.files[0])">
+          <input type="file" id="xlsFile" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleMultiFiles(this.files)">
         </div>
         <div style="text-align:center;margin-top:12px;font-size:12px;color:#6E7A9F">
           Kein passendes Format?
@@ -855,9 +856,9 @@ function renderEdit(container) {
             </div>
           </div>
           <button class="btn btn-sm" onclick="document.getElementById('xlsFile2').click()" style="border-color:#00A86B;color:#00624A">
-            🔄 Andere Datei laden
+            ➕ Weitere Datei hinzufügen
           </button>
-          <input type="file" id="xlsFile2" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleDataFile2(this.files[0])">
+          <input type="file" id="xlsFile2" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleMultiFiles(this.files, true)">
         </div>
 
         <!-- Monats-Vorschau -->
@@ -1178,43 +1179,79 @@ function fmtMonthLabel(year, month) {
 }
 
 // ── Main entry
-function handleDataFile(input) { if (input.files[0]) processDataFile(input.files[0]); }
-function handleDataFile2(file) { if (file) processDataFile(file); }
-function processDataFile(file) {
+function handleDataFile(input) { if (input.files[0]) handleMultiFiles(input.files); }
+function handleDataFile2(file) { if (file) handleMultiFiles([file]); }
+
+// Multi-file handler — processes all files and merges results
+let _multiQueue = [], _multiResults = [], _mergeMode = false;
+function handleMultiFiles(fileList, merge) {
+  const files = Array.from(fileList);
+  if (!files.length) return;
+  _mergeMode = !!merge;
+  _multiQueue = files.slice();
+  _multiResults = [];
+  showToast(`📂 ${files.length} Datei${files.length>1?'en':''} wird${files.length>1?'':'d'} geladen…`, 'info');
+  processNextInQueue();
+}
+function processNextInQueue() {
+  if (!_multiQueue.length) { finalizeMultiImport(); return; }
+  const file = _multiQueue.shift();
   const ext = file.name.split('.').pop().toLowerCase();
-  if (ext==='csv') { const r=new FileReader(); r.onload=e=>smartImport_fromCSV(e.target.result); r.readAsText(file,'UTF-8'); }
-  else { const r=new FileReader(); r.onload=e=>smartImport_fromXLSX(e.target.result); r.readAsArrayBuffer(file); }
+  if (ext==='csv') {
+    const r=new FileReader();
+    r.onload=e=>{ smartImport_collect(e.target.result, 'csv', file.name); processNextInQueue(); };
+    r.readAsText(file,'UTF-8');
+  } else {
+    const r=new FileReader();
+    r.onload=e=>{ smartImport_collect(e.target.result, 'xlsx', file.name); processNextInQueue(); };
+    r.readAsArrayBuffer(file);
+  }
 }
-function smartImport_fromXLSX(buf) {
+function smartImport_collect(data, type, filename) {
+  // Parse file → result object, push to _multiResults
   try {
-    const wb = XLSX.read(buf, { type:'array', cellDates:false, raw:false });
-    // Alle Sheets durchsuchen — ersten nehmen der nach Daten aussieht
-    let bestRows = [], bestScore = -1;
-    for (const name of wb.SheetNames) {
-      const ws = wb.Sheets[name];
-      const r = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:false });
-      if (r.length < 2) continue;
-      // Score: Sheets mit Datum/Impressionen-Keywords bevorzugen
-      const header = r.slice(0,4).map(row => row.join(' ')).join(' ').toLowerCase();
-      const score = (r.length * 0.1)
-        + (/impressi|impression/.test(header) ? 10 : 0)
-        + (/datum|date|veröffent|published/.test(header) ? 8 : 0)
-        + (/reaktion|like|comment|komment/.test(header) ? 5 : 0);
-      if (score > bestScore) { bestScore = score; bestRows = r; }
+    let rows;
+    if (type==='csv') {
+      const sep = (data.match(/;/g)||[]).length > (data.match(/,/g)||[]).length ? ';' : ',';
+      rows = data.trim().split(/\r?\n/).map(l => l.split(sep).map(s => s.replace(/^["']|["']$/g,'').trim()));
+    } else {
+      const wb = XLSX.read(data, { type:'array', cellDates:false, raw:false });
+      let bestRows=[], bestScore=-1;
+      for (const name of wb.SheetNames) {
+        const ws = wb.Sheets[name];
+        const r = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:false });
+        if (r.length < 2) continue;
+        const header = r.slice(0,4).map(row=>row.join(' ')).join(' ').toLowerCase();
+        const score = (r.length*0.1)
+          + (/impressi|impression/.test(header)?10:0)
+          + (/datum|date|veröffent|published/.test(header)?8:0)
+          + (/reaktion|like|comment|komment/.test(header)?5:0)
+          + (/follower|abonnent/.test(header)?4:0);
+        if (score > bestScore) { bestScore=score; bestRows=r; }
+      }
+      rows = bestRows;
     }
-    if (!bestRows.length) { showToast('Keine Daten in der Datei gefunden','warn'); return; }
-    smartImport(bestRows);
-  } catch(e) { showToast('Fehler beim Lesen: '+e.message+' — bitte als CSV exportieren','warn'); console.error(e); }
+    if (!rows || rows.length < 2) { showToast(`⚠️ ${filename}: Keine Daten gefunden`,'warn'); return; }
+    const result = smartImport_parse(rows);
+    if (result) { result._filename = filename; _multiResults.push(result); }
+    else showToast(`⚠️ ${filename}: Format nicht erkannt`,'warn');
+  } catch(e) { showToast(`⚠️ ${filename}: ${e.message}`,'warn'); }
 }
-function smartImport_fromCSV(text) {
-  const sep = (text.match(/;/g)||[]).length > (text.match(/,/g)||[]).length ? ';' : ',';
-  smartImport(text.trim().split(/\r?\n/).map(l => l.split(sep).map(s => s.replace(/^["']|["']$/g,'').trim())));
-}
+
+function processDataFile(file) { handleMultiFiles([file]); }
+function smartImport_fromXLSX(buf) { smartImport_collect(buf,'xlsx','datei'); finalizeMultiImport(); }
+function smartImport_fromCSV(text) { smartImport_collect(text,'csv','datei'); finalizeMultiImport(); }
 
 function smartImport(rows) {
-  if (!rows || rows.length < 2) { showToast('Datei enthält keine Daten','warn'); return; }
+  const result = smartImport_parse(rows);
+  if (result) showImportPreview(result.d, result.mode, result.months, result.totalRows, result.autoPosts);
+}
 
-  // 1. Find header row (scan first 6 rows for LinkedIn/data keywords)
+// Parse rows → result object (no side effects)
+function smartImport_parse(rows) {
+  if (!rows || rows.length < 2) return null;
+
+  // 1. Find header row
   let headerIdx = 0;
   for (let i = 0; i < Math.min(6, rows.length); i++) {
     const joined = rows[i].map(c=>String(c||'')).join(' ').toLowerCase();
@@ -1224,7 +1261,7 @@ function smartImport(rows) {
   }
   const header = rows[headerIdx].map(c => String(c||'').toLowerCase().trim());
 
-  // 2. Detect columns — LinkedIn DE + EN + custom
+  // 2. Detect columns
   const ci = {
     date:        findCol(header, ['datum','veröffentlichungsdatum','date','erstellt','published','created','monat','month','zeit']),
     impressions: findCol(header, ['impression','reichweite','views','aufrufe','sichtbarkeit','mitglieder erreicht','erreicht']),
@@ -1241,31 +1278,23 @@ function smartImport(rows) {
   };
   if (ci.date < 0) ci.date = 0;
 
-  // 3. Data rows = everything after header, skip empty
   const dataRows = rows.slice(headerIdx + 1).filter(r =>
     r.some(c => c !== '' && c !== null && c !== undefined)
   );
-  if (!dataRows.length) { showToast('Keine Datenzeilen gefunden — ist die Datei leer?','warn'); return; }
+  if (!dataRows.length) return null;
 
-  // 4. Detect mode: full date (per post) vs monthly label
   const firstDateVal = dataRows[0][ci.date];
-  const firstParsed = parseDate(firstDateVal);
-  // If date has a day component OR there are many rows → post-level
   const hasDay = isFullDate(String(firstDateVal||''));
   const manyRows = dataRows.length > 24;
   const mode = (hasDay || manyRows) ? 'post-level' : 'monthly';
 
-  if (mode === 'post-level') {
-    importPostLevel(dataRows, ci);
-  } else {
-    importMonthly(dataRows, ci);
-  }
+  if (mode === 'post-level') return importPostLevel_parse(dataRows, ci);
+  else return importMonthly_parse(dataRows, ci);
 }
 
 // ── Mode A: Post-Level Data (1 row per post) → aggregate by month
-function importPostLevel(dataRows, ci) {
-  const monthMap = new Map(); // "YYYY-MM" → bucket
-
+function importPostLevel_parse(dataRows, ci) {
+  const monthMap = new Map();
   dataRows.forEach(row => {
     const parsed = parseDate(row[ci.date]);
     if (!parsed) return;
@@ -1282,52 +1311,105 @@ function importPostLevel(dataRows, ci) {
     const foll  = ci.followers>=0   ? parseNum(row[ci.followers])   : 0;
     const eng   = ci.engagements>=0 ? parseNum(row[ci.engagements]) : (likes + comm + shar);
     const cap   = ci.caption>=0     ? String(row[ci.caption]||'').trim() : '';
-    const lbl   = ci.date>=0        ? String(row[ci.date]||'').trim() : '';
-    m.impressions += impr;
-    m.followers   += foll;
-    m.engagements += eng;
-    m.posts++;
-    const url = ci.url>=0 ? String(row[ci.url]||'').trim() : '';
+    const lbl   = String(row[ci.date]||'').trim();
+    const url   = ci.url>=0         ? String(row[ci.url]||'').trim() : '';
+    m.impressions += impr; m.followers += foll; m.engagements += eng; m.posts++;
     if (cap || impr>0) m.rawPosts.push({ impr, likes, comm, shar, eng, caption:cap, date:lbl, url });
   });
-
   const sorted = [...monthMap.values()].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
   const d = {
-    labels:       sorted.map(m=>m.label),
-    impressions:  sorted.map(m=>m.impressions),
-    followers:    sorted.map(m=>m.followers),
-    engagements:  sorted.map(m=>m.engagements),
-    postsPerMonth:sorted.map(m=>m.posts)
+    labels: sorted.map(m=>m.label), impressions: sorted.map(m=>m.impressions),
+    followers: sorted.map(m=>m.followers), engagements: sorted.map(m=>m.engagements),
+    postsPerMonth: sorted.map(m=>m.posts), _sortKeys: sorted.map(m=>m.sortKey)
   };
-  // Auto-extract top posts (top 10 by impressions, only if caption found)
   const allPosts = sorted.flatMap(m=>m.rawPosts).filter(p=>p.caption).sort((a,b)=>b.impr-a.impr).slice(0,10);
-
-  showImportPreview(d, 'post-level', sorted.length, dataRows.length, allPosts);
+  return { d, mode:'post-level', months:sorted.length, totalRows:dataRows.length, autoPosts:allPosts };
 }
 
 // ── Mode B: Monthly Summary (1 row per month)
-function importMonthly(dataRows, ci) {
-  const d = { labels:[], impressions:[], followers:[], engagements:[], postsPerMonth:[] };
+function importMonthly_parse(dataRows, ci) {
+  const d = { labels:[], impressions:[], followers:[], engagements:[], postsPerMonth:[], _sortKeys:[] };
   dataRows.forEach(row => {
     const lbl = String(row[ci.date]||'').trim();
     if (!lbl) return;
-    // Try to normalize label
     const parsed = parseDate(lbl);
     const label = parsed ? fmtMonthLabel(parsed.year, parsed.month) : lbl;
-    d.labels.push(label);
+    const sortKey = parsed ? `${parsed.year}-${String(parsed.month+1).padStart(2,'0')}` : lbl;
+    d.labels.push(label); d._sortKeys.push(sortKey);
     d.impressions.push(ci.impressions>=0  ? parseNum(row[ci.impressions])  : parseNum(row[1]));
     d.followers.push(  ci.followers>=0    ? parseNum(row[ci.followers])    : parseNum(row[2]));
-    d.engagements.push(ci.engagements>=0  ? parseNum(row[ci.engagements])  : (ci.likes>=0 ? parseNum(row[ci.likes])+parseNum(row[ci.comments]||0)+parseNum(row[ci.shares]||0) : parseNum(row[3])));
+    d.engagements.push(ci.engagements>=0  ? parseNum(row[ci.engagements])  : (ci.likes>=0 ? parseNum(row[ci.likes])+(parseNum(row[ci.comments]||0))+(parseNum(row[ci.shares]||0)) : parseNum(row[3])));
     d.postsPerMonth.push(ci.postsCount>=0 ? parseNum(row[ci.postsCount])   : parseNum(row[4]));
   });
-  showImportPreview(d, 'monthly', d.labels.length, dataRows.length, []);
+  return { d, mode:'monthly', months:d.labels.length, totalRows:dataRows.length, autoPosts:[] };
+}
+
+// ── Merge multiple parsed results into one
+function mergeImportResults(results) {
+  if (!results.length) return null;
+  if (results.length === 1) return results[0];
+
+  // Merge all into a map keyed by sortKey
+  const mergeMap = new Map(); // sortKey → {label, impressions, followers, engagements, postsPerMonth}
+  let allPosts = [];
+
+  results.forEach(res => {
+    const { d, autoPosts } = res;
+    const keys = d._sortKeys || d.labels;
+    keys.forEach((key, i) => {
+      if (!mergeMap.has(key)) {
+        mergeMap.set(key, { label:d.labels[i], sortKey:key, impressions:0, followers:0, engagements:0, postsPerMonth:0 });
+      }
+      const m = mergeMap.get(key);
+      // Add impressions/engagements; for followers take the max (not cumulative)
+      m.impressions   += (d.impressions[i]   || 0);
+      m.followers      = Math.max(m.followers, d.followers[i] || 0);
+      m.engagements   += (d.engagements[i]   || 0);
+      m.postsPerMonth += (d.postsPerMonth[i] || 0);
+    });
+    allPosts = allPosts.concat(autoPosts || []);
+  });
+
+  const sorted = [...mergeMap.values()].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
+  const d = {
+    labels: sorted.map(m=>m.label), _sortKeys: sorted.map(m=>m.sortKey),
+    impressions: sorted.map(m=>m.impressions), followers: sorted.map(m=>m.followers),
+    engagements: sorted.map(m=>m.engagements), postsPerMonth: sorted.map(m=>m.postsPerMonth)
+  };
+  allPosts = allPosts.sort((a,b)=>b.impr-a.impr).slice(0,10);
+
+  const totalRows = results.reduce((s,r)=>s+r.totalRows,0);
+  const modeLabel = results.map(r=>r._filename||r.mode).join(' + ');
+  return { d, mode:'merged', months:sorted.length, totalRows, autoPosts:allPosts, _mergeLabel:modeLabel };
+}
+
+// ── Called when all files in queue are processed
+function finalizeMultiImport() {
+  if (!_multiResults.length) { showToast('Keine Daten erkannt','warn'); return; }
+
+  let finalResult;
+  if (_mergeMode && _pendingImport) {
+    // Add to existing data
+    const existingResult = _pendingImport;
+    finalResult = mergeImportResults([existingResult, ..._multiResults]);
+  } else {
+    finalResult = mergeImportResults(_multiResults);
+  }
+
+  if (!finalResult) { showToast('Zusammenführen fehlgeschlagen','warn'); return; }
+
+  const fileCount = _multiResults.length;
+  showToast(`✅ ${fileCount} Datei${fileCount>1?'en':''} zusammengeführt — ${finalResult.months} Monate`, 'success');
+  showImportPreview(finalResult.d, finalResult.mode, finalResult.months, finalResult.totalRows, finalResult.autoPosts, finalResult._mergeLabel);
 }
 
 // ── Preview before confirming
 let _pendingImport = null;
-function showImportPreview(d, mode, months, totalRows, autoPosts) {
+function showImportPreview(d, mode, months, totalRows, autoPosts, mergeLabel) {
   _pendingImport = { d, autoPosts };
-  const modeLabel = mode==='post-level'
+  const modeLabel = mode==='merged'
+    ? `<span style="color:var(--success);font-weight:600">✅ ${mergeLabel ? mergeLabel.split(' + ').length+' Dateien zusammengeführt' : 'Zusammengeführt'}</span> — ${totalRows} Zeilen → ${months} Monate`
+    : mode==='post-level'
     ? `<span style="color:var(--success);font-weight:600">✅ Post-Level erkannt</span> — ${totalRows} Einzelposts → ${months} Monate aggregiert`
     : `<span style="color:var(--success);font-weight:600">✅ Monatsdaten erkannt</span> — ${months} Monate gefunden`;
 
@@ -1347,8 +1429,13 @@ function showImportPreview(d, mode, months, totalRows, autoPosts) {
   const preview = document.getElementById('importPreview');
   if (!preview) return;
   preview.style.display = '';
+  const fileChips = _multiResults.length > 1
+    ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${_multiResults.map(r=>`<span style="background:#EEF0FF;color:#5B63FE;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600">📄 ${r._filename||'datei'}</span>`).join('')}</div>`
+    : '';
+
   preview.innerHTML = `
     <div style="background:var(--bg);border-radius:10px;padding:14px">
+      ${fileChips}
       <div style="font-size:12px;margin-bottom:10px">${modeLabel}</div>
       <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
         <table style="width:100%;border-collapse:collapse">
@@ -1381,12 +1468,17 @@ function confirmImport() {
   const c = getClient(ROUTE.clientId);
   if (!c) return;
   c.monthly = d;
-  if (autoPosts.length && (!c.posts || !c.posts.length)) {
-    c.posts = autoPosts.map(p => ({
-      caption: p.caption, label: p.date || '',
-      impr: p.impr, likes: p.likes || 0, comments: p.comm || 0,
-      shares: p.shar || 0, eng: p.eng || 0, url: p.url || '', type: 'story'
-    }));
+  if (autoPosts.length) {
+    // Merge with existing posts (avoid duplicates by caption)
+    const existing = new Set((c.posts||[]).map(p=>p.caption));
+    const newPosts = autoPosts
+      .filter(p => !existing.has(p.caption))
+      .map(p => ({
+        caption: p.caption, label: p.date || '',
+        impr: p.impr, likes: p.likes || 0, comments: p.comm || 0,
+        shares: p.shar || 0, eng: p.eng || 0, url: p.url || '', type: 'story'
+      }));
+    c.posts = [...(c.posts||[]), ...newPosts].sort((a,b)=>b.impr-a.impr).slice(0,10);
   }
   c.updatedAt = Date.now();
   saveApp();
