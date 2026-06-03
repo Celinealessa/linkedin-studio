@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-22 -->
+<!-- v20260603-23 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: fetch latest version silently, reload if newer
 (function(){
-  const MY_V = 'v20260603-22';
+  const MY_V = 'v20260603-23';
   if (sessionStorage.getItem('_lv') === MY_V) return; // already checked this session
   sessionStorage.setItem('_lv', MY_V);
   fetch(location.pathname + '?_t=' + Date.now(), {cache:'no-store'})
@@ -1437,9 +1437,24 @@ function parseLinkedInAggregateAnalytics(wb) {
   if (!engWs) return null;
 
   const engRows = XLSX.utils.sheet_to_json(engWs, {header:1, defval:'', raw:false});
-  // Header row 0: ["Date","Impressions","Engagements"]
+  // Find header row dynamically (EN: Date/Impressions/Engagements, DE: Datum/Impressionen/Interaktionen)
+  let engDataStart = 0;
+  let engImprCol = 1, engEngCol = 2;
+  for (let i = 0; i < Math.min(6, engRows.length); i++) {
+    const row = engRows[i];
+    const joined = row.map(c=>String(c||'').toLowerCase()).join(' ');
+    if (joined.includes('date') || joined.includes('datum')) {
+      engDataStart = i + 1;
+      row.forEach((h,j) => {
+        const hh = String(h||'').toLowerCase();
+        if (hh.includes('impression')) engImprCol = j;
+        if (hh.includes('engagement') || hh.includes('interaktion') || hh.includes('reaction')) engEngCol = j;
+      });
+      break;
+    }
+  }
   const monthMap = new Map();
-  for (let i = 1; i < engRows.length; i++) {
+  for (let i = engDataStart; i < engRows.length; i++) {
     const row = engRows[i];
     const dateStr = String(row[0]||'').trim();
     if (!dateStr) continue;
@@ -1451,8 +1466,8 @@ function parseLinkedInAggregateAnalytics(wb) {
         impressions:0, engagements:0, newFollowers:0, followers:0});
     }
     const m = monthMap.get(key);
-    m.impressions += parseNum(row[1]);
-    m.engagements += parseNum(row[2]);
+    m.impressions += parseNum(row[engImprCol]);
+    m.engagements += parseNum(row[engEngCol]);
   }
 
   // FOLLOWERS sheet → new followers per month + total at end
@@ -1840,7 +1855,7 @@ function confirmImport() {
   _pendingImport = null;
 
   // Re-render the entire edit view so data table, buttons, split select all appear correctly
-  showToast(`✅ ${d.labels.length} Zeiträume importiert — ${c.posts?.length ? c.posts.length+' Posts erkannt' : 'keine Posts erkannt'}`, 'ok');
+  showToast(`✅ ${d.labels.length} Monate · ${c.posts?.length||0} Top-Posts · ${c.flopPosts?.length||0} Flop-Posts · ${d.totalFollowers ? fmt(d.totalFollowers)+' Follower' : ''}`, 'ok');
   navigate('edit', ROUTE.clientId, 'data');
 }
 
