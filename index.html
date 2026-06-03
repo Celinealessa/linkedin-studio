@@ -810,14 +810,25 @@ function renderEdit(container) {
           </div>
           <div class="upload-zone" id="uploadZone" onclick="document.getElementById('xlsFile').click()">
             <div class="upload-icon">📊</div>
-            <div class="upload-title">Excel (.xlsx) oder CSV ablegen</div>
-            <div class="upload-sub">Spalten: Monat · Impressionen · Neue Follower · Engagements · Posts/Monat</div>
+            <div class="upload-title">Excel (.xlsx) oder CSV ablegen — beliebiges Format</div>
+            <div class="upload-sub">Rohdaten (1 Zeile pro Post) <strong>oder</strong> Monatssummary — wird automatisch erkannt</div>
             <input type="file" id="xlsFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleDataFile(this)">
           </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
-            <span style="font-size:12px;color:var(--muted)">Erste Zeile = Header (wird übersprungen)</span>
-            <button class="btn btn-ghost btn-sm" onclick="downloadTemplate()">⬇️ Vorlage herunterladen</button>
+          <div style="background:var(--bg);border-radius:8px;padding:10px 14px;margin-top:10px;font-size:11px;color:var(--muted);line-height:1.8">
+            <strong style="color:var(--text)">Automatisch erkannte Spalten:</strong><br>
+            📅 Datum / Date / Veröffentlicht / Monat &nbsp;·&nbsp;
+            👁️ Impressionen / Impressions / Reichweite<br>
+            👍 Reaktionen / Likes &nbsp;·&nbsp; 💬 Kommentare / Comments &nbsp;·&nbsp; 🔁 Weiterleitungen / Shares<br>
+            👥 Neue Follower &nbsp;·&nbsp; 📝 Caption / Beitragstitel &nbsp;·&nbsp; 🖱️ Klicks / Clicks
           </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+            <span style="font-size:12px;color:var(--muted)">LinkedIn-Export direkt hochladbar · Eigene Formate werden erkannt</span>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-ghost btn-sm" onclick="downloadTemplate('post')">⬇️ Vorlage Post-Level</button>
+              <button class="btn btn-ghost btn-sm" onclick="downloadTemplate('monthly')">⬇️ Vorlage Monatlich</button>
+            </div>
+          </div>
+          <div id="importPreview" style="margin-top:12px;display:none"></div>
         </div>
 
         <!-- Manual -->
@@ -1010,44 +1021,284 @@ function updateManualSplitSel() {
   updateSplitSelect(labels, '');
 }
 
-// ── File upload
+// ══════════════════════════════════════════
+//  SMART IMPORT ENGINE
+// ══════════════════════════════════════════
+
+// ── Column keyword detection
+function findCol(header, keywords) {
+  for (let i = 0; i < header.length; i++) {
+    const h = String(header[i]||'').toLowerCase().replace(/[_\s-]/g,'');
+    if (keywords.some(kw => h.includes(kw.replace(/[_\s-]/g,'')))) return i;
+  }
+  return -1;
+}
+
+// ── Is this value a full date (contains day)?
+function isFullDate(val) {
+  const s = String(val||'').trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return true;          // ISO 2025-01-15
+  if (/^\d{1,2}[./]\d{1,2}[./]\d{4}/.test(s)) return true; // DE 15.01.2025
+  if (/^[A-Za-z]{3,}\s+\d{1,2},?\s+\d{4}/.test(s)) return true; // Jan 15, 2025
+  if (/^\d{5}$/.test(s)) return true;                       // Excel serial
+  return false;
+}
+
+// ── Parse any date → {year, month 0-indexed} or null
+function parseDate(val) {
+  const s = String(val||'').trim();
+  if (!s) return null;
+
+  // Excel serial number
+  if (/^\d{5}$/.test(s)) {
+    const d = new Date((+s - 25569) * 86400 * 1000);
+    return { year: d.getUTCFullYear(), month: d.getUTCMonth() };
+  }
+  // ISO 2025-01-15
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return { year:+iso[1], month:+iso[2]-1 };
+  // German 15.01.2025 or 15/01/2025
+  const de = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})/);
+  if (de) return { year:+de[3], month:+de[2]-1 };
+
+  const MEN = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  const MDE = ['jan','feb','mär','apr','mai','jun','jul','aug','sep','okt','nov','dez'];
+
+  // "January 15, 2025" or "Jan 15 2025"
+  const en1 = s.match(/^([A-Za-z]{3,})\s+(\d{1,2}),?\s*(\d{4})/);
+  if (en1) { const mi=MEN.indexOf(en1[1].slice(0,3).toLowerCase()); if(mi>=0) return {year:+en1[3],month:mi}; }
+
+  // Monthly: "Jan 25" / "Januar 2025" / "Jan. 2025"
+  const mon = s.match(/^([A-Za-zÄäÖöÜüß]{3,})\.?\s+(\d{2,4})/);
+  if (mon) {
+    const key = mon[1].slice(0,3).toLowerCase();
+    let mi = MEN.indexOf(key); if(mi<0) mi = MDE.indexOf(key);
+    if (mi>=0) {
+      const yr = mon[2].length===2 ? 2000+parseInt(mon[2]) : +mon[2];
+      return { year:yr, month:mi };
+    }
+  }
+  // "2025-01" or "01/2025"
+  const ym = s.match(/^(\d{4})[/-](\d{2})$/);
+  if (ym) return { year:+ym[1], month:+ym[2]-1 };
+  const my = s.match(/^(\d{2})[/-](\d{4})$/);
+  if (my) return { year:+my[2], month:+my[1]-1 };
+
+  return null;
+}
+
+function fmtMonthLabel(year, month) {
+  return ['Jan','Feb','Mrz','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'][month]+' '+String(year).slice(-2);
+}
+
+// ── Main entry
 function handleDataFile(input) { if (input.files[0]) processDataFile(input.files[0]); }
 function processDataFile(file) {
   const ext = file.name.split('.').pop().toLowerCase();
-  if (ext === 'csv') { const r = new FileReader(); r.onload = e => parseCSV(e.target.result); r.readAsText(file,'UTF-8'); }
-  else { const r = new FileReader(); r.onload = e => parseXLSX(e.target.result); r.readAsArrayBuffer(file); }
+  if (ext==='csv') { const r=new FileReader(); r.onload=e=>smartImport_fromCSV(e.target.result); r.readAsText(file,'UTF-8'); }
+  else { const r=new FileReader(); r.onload=e=>smartImport_fromXLSX(e.target.result); r.readAsArrayBuffer(file); }
 }
-function parseXLSX(buf) {
+function smartImport_fromXLSX(buf) {
   try {
-    const wb = XLSX.read(buf,{type:'array'});
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    applyDataRows(XLSX.utils.sheet_to_json(ws,{header:1,defval:''}));
-  } catch(e) { showToast('Fehler: '+e.message,'warn'); }
+    const wb = XLSX.read(buf,{type:'array',cellDates:false});
+    // Support multiple sheets — pick first non-empty
+    let rows = [];
+    for (const name of wb.SheetNames) {
+      const ws = wb.Sheets[name];
+      const r = XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      if (r.length > 1) { rows = r; break; }
+    }
+    smartImport(rows);
+  } catch(e) { showToast('Fehler beim Lesen: '+e.message,'warn'); }
 }
-function parseCSV(text) {
-  const sep = text.includes(';') ? ';' : ',';
-  applyDataRows(text.trim().split(/\r?\n/).map(l=>l.split(sep).map(s=>s.trim())));
+function smartImport_fromCSV(text) {
+  const sep = (text.match(/;/g)||[]).length > (text.match(/,/g)||[]).length ? ';' : ',';
+  smartImport(text.trim().split(/\r?\n/).map(l => l.split(sep).map(s => s.replace(/^["']|["']$/g,'').trim())));
 }
-function applyDataRows(rows) {
-  let start = 0;
-  for (let i=0;i<Math.min(5,rows.length);i++) {
-    if (/monat|month|impressi/i.test(rows[i].join(' '))) { start=i+1; break; }
+
+function smartImport(rows) {
+  if (!rows || rows.length < 2) { showToast('Datei enthält keine Daten','warn'); return; }
+
+  // 1. Find header row (first row with recognisable keywords, max first 5 rows)
+  let headerIdx = -1;
+  let header = [];
+  for (let i = 0; i < Math.min(5, rows.length); i++) {
+    const joined = rows[i].join(' ').toLowerCase();
+    if (/datum|date|monat|month|impressi|erstellt|veröffent|published|created/i.test(joined)) {
+      headerIdx = i; header = rows[i].map(c => String(c||'').toLowerCase()); break;
+    }
   }
-  const d = { labels:[],impressions:[],followers:[],engagements:[],postsPerMonth:[] };
-  for (let i=start;i<rows.length;i++) {
-    const r=rows[i]; const lbl=String(r[0]||'').trim();
-    if (!lbl) continue;
-    d.labels.push(lbl);
-    d.impressions.push(toN(r[1])); d.followers.push(toN(r[2]));
-    d.engagements.push(toN(r[3])); d.postsPerMonth.push(toN(r[4]));
+  // No header found → assume first row is header
+  if (headerIdx < 0) { headerIdx = 0; header = rows[0].map(c => String(c||'').toLowerCase()); }
+
+  // 2. Detect columns
+  const ci = {
+    date:        findCol(header, ['datum','date','erstellt','veröffent','published','created','monat','month']),
+    impressions: findCol(header, ['impression','reichweite','views','aufrufe','sichtbarkeit']),
+    likes:       findCol(header, ['reaktion','like','gefällt','reaction']),
+    comments:    findCol(header, ['kommentar','comment']),
+    shares:      findCol(header, ['weiterleit','share','repost','geteilt']),
+    clicks:      findCol(header, ['klick','click']),
+    followers:   findCol(header, ['follower','abonnent','neue follower','new follower']),
+    engagements: findCol(header, ['engagement','interaktion','gesamt']),
+    postsCount:  findCol(header, ['anzahl post','post count','beiträge']),
+    caption:     findCol(header, ['caption','text','inhalt','beitragstitel','title','beschreibung']),
+  };
+  if (ci.date < 0) ci.date = 0; // fallback: first column is date
+
+  // 3. Read data rows
+  const dataRows = rows.slice(headerIdx + 1).filter(r => r.some(c => c !== '' && c !== null));
+
+  if (!dataRows.length) { showToast('Keine Datenzeilen gefunden','warn'); return; }
+
+  // 4. Detect mode: check first date value
+  const firstDateVal = String(dataRows[0][ci.date]||'').trim();
+  const mode = isFullDate(firstDateVal) ? 'post-level' : 'monthly';
+
+  if (mode === 'post-level') {
+    importPostLevel(dataRows, ci);
+  } else {
+    importMonthly(dataRows, ci);
   }
-  if (!d.labels.length) { showToast('Keine Daten gefunden','warn'); return; }
-  const c = getClient(ROUTE.clientId);
-  if (c) { c.monthly=d; c.updatedAt=Date.now(); saveApp(); }
+}
+
+// ── Mode A: Post-Level Data (1 row per post) → aggregate by month
+function importPostLevel(dataRows, ci) {
+  const monthMap = new Map(); // "YYYY-MM" → bucket
+
+  dataRows.forEach(row => {
+    const parsed = parseDate(row[ci.date]);
+    if (!parsed) return;
+    const key = `${parsed.year}-${String(parsed.month+1).padStart(2,'0')}`;
+    if (!monthMap.has(key)) {
+      monthMap.set(key, { label:fmtMonthLabel(parsed.year,parsed.month), sortKey:key,
+        impressions:0, followers:0, engagements:0, posts:0, rawPosts:[] });
+    }
+    const m = monthMap.get(key);
+    const impr  = ci.impressions>=0 ? toN(row[ci.impressions]) : 0;
+    const likes = ci.likes>=0       ? toN(row[ci.likes])       : 0;
+    const comm  = ci.comments>=0    ? toN(row[ci.comments])    : 0;
+    const shar  = ci.shares>=0      ? toN(row[ci.shares])      : 0;
+    const foll  = ci.followers>=0   ? toN(row[ci.followers])   : 0;
+    const eng   = ci.engagements>=0 ? toN(row[ci.engagements]) : (likes + comm + shar);
+    const cap   = ci.caption>=0     ? String(row[ci.caption]||'').trim() : '';
+    const lbl   = ci.date>=0        ? String(row[ci.date]||'').trim() : '';
+    m.impressions += impr;
+    m.followers   += foll;
+    m.engagements += eng;
+    m.posts++;
+    if (cap || impr>0) m.rawPosts.push({ impr, likes, comm, shar, eng, caption:cap, date:lbl });
+  });
+
+  const sorted = [...monthMap.values()].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
+  const d = {
+    labels:       sorted.map(m=>m.label),
+    impressions:  sorted.map(m=>m.impressions),
+    followers:    sorted.map(m=>m.followers),
+    engagements:  sorted.map(m=>m.engagements),
+    postsPerMonth:sorted.map(m=>m.posts)
+  };
+  // Auto-extract top posts (top 10 by impressions, only if caption found)
+  const allPosts = sorted.flatMap(m=>m.rawPosts).filter(p=>p.caption).sort((a,b)=>b.impr-a.impr).slice(0,10);
+
+  showImportPreview(d, 'post-level', sorted.length, dataRows.length, allPosts);
+}
+
+// ── Mode B: Monthly Summary (1 row per month)
+function importMonthly(dataRows, ci) {
+  const d = { labels:[], impressions:[], followers:[], engagements:[], postsPerMonth:[] };
+  dataRows.forEach(row => {
+    const lbl = String(row[ci.date]||'').trim();
+    if (!lbl) return;
+    // Try to normalize label
+    const parsed = parseDate(lbl);
+    const label = parsed ? fmtMonthLabel(parsed.year, parsed.month) : lbl;
+    d.labels.push(label);
+    d.impressions.push(ci.impressions>=0  ? toN(row[ci.impressions])  : toN(row[1]));
+    d.followers.push(  ci.followers>=0    ? toN(row[ci.followers])    : toN(row[2]));
+    d.engagements.push(ci.engagements>=0  ? toN(row[ci.engagements])  : (ci.likes>=0 ? toN(row[ci.likes])+toN(row[ci.comments]||0)+toN(row[ci.shares]||0) : toN(row[3])));
+    d.postsPerMonth.push(ci.postsCount>=0 ? toN(row[ci.postsCount])   : toN(row[4]));
+  });
+  showImportPreview(d, 'monthly', d.labels.length, dataRows.length, []);
+}
+
+// ── Preview before confirming
+let _pendingImport = null;
+function showImportPreview(d, mode, months, totalRows, autoPosts) {
+  _pendingImport = { d, autoPosts };
+  const modeLabel = mode==='post-level'
+    ? `<span style="color:var(--success);font-weight:600">✅ Post-Level erkannt</span> — ${totalRows} Einzelposts → ${months} Monate aggregiert`
+    : `<span style="color:var(--success);font-weight:600">✅ Monatsdaten erkannt</span> — ${months} Monate gefunden`;
+
+  const rows = d.labels.map((l,i) => `
+    <tr>
+      <td style="font-family:'DM Mono',monospace;font-size:11px;padding:4px 8px;color:var(--muted)">${l}</td>
+      <td style="text-align:right;padding:4px 8px;font-size:12px">${fmt(d.impressions[i])}</td>
+      <td style="text-align:right;padding:4px 8px;font-size:12px">${fmt(d.followers[i])}</td>
+      <td style="text-align:right;padding:4px 8px;font-size:12px">${fmt(d.engagements[i])}</td>
+      <td style="text-align:right;padding:4px 8px;font-size:12px">${d.postsPerMonth[i]}</td>
+    </tr>`).join('');
+
+  const autoPostNote = autoPosts.length
+    ? `<div style="margin-top:8px;padding:8px 12px;background:#E8F8F2;border-radius:7px;font-size:12px;color:#00624A">🏆 ${autoPosts.length} Top-Posts automatisch erkannt — werden im nächsten Schritt vorausgefüllt</div>`
+    : '';
+
+  const preview = document.getElementById('importPreview');
+  if (!preview) return;
+  preview.style.display = '';
+  preview.innerHTML = `
+    <div style="background:var(--bg);border-radius:10px;padding:14px">
+      <div style="font-size:12px;margin-bottom:10px">${modeLabel}</div>
+      <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+        <table style="width:100%;border-collapse:collapse">
+          <thead style="position:sticky;top:0;background:#fff">
+            <tr>
+              <th style="padding:5px 8px;text-align:left;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;border-bottom:2px solid var(--border)">Monat</th>
+              <th style="padding:5px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;border-bottom:2px solid var(--border)">Impressionen</th>
+              <th style="padding:5px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;border-bottom:2px solid var(--border)">Follower</th>
+              <th style="padding:5px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;border-bottom:2px solid var(--border)">Engagements</th>
+              <th style="padding:5px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;border-bottom:2px solid var(--border)">Posts</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${autoPostNote}
+      <div style="display:flex;justify-content:flex-end;margin-top:10px">
+        <button class="btn btn-primary btn-sm" onclick="confirmImport()">✅ Daten übernehmen</button>
+      </div>
+    </div>`;
+
+  // Also update the ok banner
   const ok = document.getElementById('dataOk');
-  if (ok) { ok.textContent=`✅ ${d.labels.length} Monate geladen: ${d.labels[0]} – ${d.labels[d.labels.length-1]}`; ok.classList.add('show'); }
-  updateSplitSelect(d.labels, c?.splitLabel||'');
-  showToast(`${d.labels.length} Monate importiert`,'ok');
+  if (ok) { ok.textContent = `Vorschau: ${months} Monate erkannt — bitte bestätigen ↓`; ok.classList.add('show'); }
+}
+
+function confirmImport() {
+  if (!_pendingImport) return;
+  const { d, autoPosts } = _pendingImport;
+  const c = getClient(ROUTE.clientId);
+  if (!c) return;
+  c.monthly = d;
+  // Auto-fill posts if detected
+  if (autoPosts.length && (!c.posts || !c.posts.length)) {
+    c.posts = autoPosts.map(p => ({
+      caption: p.caption,
+      label: p.date || '',
+      impr: p.impr,
+      comments: p.comm || 0,
+      type: 'story'
+    }));
+  }
+  c.updatedAt = Date.now();
+  saveApp();
+  _pendingImport = null;
+  const ok = document.getElementById('dataOk');
+  if (ok) { ok.textContent = `✅ ${d.labels.length} Monate gespeichert: ${d.labels[0]} – ${d.labels[d.labels.length-1]}`; ok.classList.add('show'); }
+  const preview = document.getElementById('importPreview');
+  if (preview) preview.style.display = 'none';
+  updateSplitSelect(d.labels, c.splitLabel||'');
+  showToast(`${d.labels.length} Monate importiert`, 'ok');
 }
 function updateSplitSelect(labels, current) {
   const sel = document.getElementById('splitSel');
@@ -1450,20 +1701,34 @@ function saveAsHTML() {
   showToast('App gespeichert (alle Kunden enthalten)', 'ok');
 }
 
-function downloadTemplate() {
-  const rows = [
-    ['Monat','Impressionen','Neue Follower','Engagements','Posts/Monat'],
-    ['Jan 26','45000','180','1200','6'],
-    ['Feb 26','52000','210','1450','7'],
-    ['Mrz 26','48000','195','1300','6'],
-    ['Apr 26','61000','250','1700','8'],
-    ['Mai 26','55000','230','1550','7'],
-    ['Jun 26','70000','280','1900','8'],
-  ];
+function downloadTemplate(type) {
+  let rows, filename;
+  if (type === 'post') {
+    rows = [
+      ['Datum','Beitragstitel / Caption','Impressionen','Reaktionen','Kommentare','Weiterleitungen','Klicks','Neue Follower'],
+      ['15.01.2026','„Beispiel-Post: Warum Loyalität 2026 neu gedacht werden muss"','12400','180','22','15','340','45'],
+      ['22.01.2026','„5 Dinge die ich nach 10 Jahren in der Branche gelernt habe"','8900','210','31','12','220','38'],
+      ['03.02.2026','„Unser neues Partnerprogramm ist live — hier die Details"','6200','95','8','20','180','22'],
+      ['14.02.2026','„KI im Retail: Chance oder Risiko? Meine Einschätzung"','18500','340','52','28','410','87'],
+      ['28.02.2026','„Behind the Scenes: So arbeiten wir remote"','5100','88','6','9','110','15'],
+    ];
+    filename = 'LinkedIn_Vorlage_PostLevel.xlsx';
+  } else {
+    rows = [
+      ['Monat','Impressionen','Neue Follower','Engagements','Posts/Monat'],
+      ['Jan 26','45000','180','1200','6'],
+      ['Feb 26','52000','210','1450','7'],
+      ['Mrz 26','48000','195','1300','6'],
+      ['Apr 26','61000','250','1700','8'],
+      ['Mai 26','55000','230','1550','7'],
+      ['Jun 26','70000','280','1900','8'],
+    ];
+    filename = 'LinkedIn_Vorlage_Monatlich.xlsx';
+  }
   const ws = XLSX.utils.aoa_to_sheet(rows);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Monatsdaten');
-  XLSX.writeFile(wb, 'LinkedIn_Daten_Vorlage.xlsx');
+  XLSX.utils.book_append_sheet(wb, ws, type==='post'?'Post-Level':'Monatsdaten');
+  XLSX.writeFile(wb, filename);
   showToast('Vorlage heruntergeladen', 'ok');
 }
 
