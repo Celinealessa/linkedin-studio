@@ -588,6 +588,7 @@ function newClient() {
     posts: [],
     recommendations: null,
     contentMix: null,
+    _loadedFiles: [],
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -848,23 +849,37 @@ function renderEdit(container) {
 
       <!-- STATUS: Daten geladen -->
       <div id="dataLoadedBox" style="${c.monthly?'':'display:none'}">
-        <div style="background:#E8F8F2;border:1px solid #00A86B;border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-          <div>
-            <div style="font-size:15px;font-weight:600;color:#00624A">✅ Daten geladen</div>
-            <div style="font-size:13px;color:#00A86B;margin-top:2px" id="loadedInfo">
-              ${c.monthly ? c.monthly.labels.length+' Monate: '+c.monthly.labels[0]+' – '+c.monthly.labels[c.monthly.labels.length-1] : ''}
+
+        <!-- Geladene Dateien -->
+        <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem;margin-bottom:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <div style="font-size:13px;font-weight:700;color:var(--text)">📂 Geladene Dateien</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-sm" onclick="document.getElementById('xlsFile2').click()" style="border-color:#5B63FE;color:#5B63FE;font-weight:600">
+                ➕ Weitere Datei hinzufügen
+              </button>
+              <button class="btn btn-sm" onclick="clearAllData()" style="border-color:#E53E3E;color:#E53E3E">
+                🗑️ Alle Daten löschen
+              </button>
             </div>
+            <input type="file" id="xlsFile2" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleMultiFiles(this.files, true)">
           </div>
-          <button class="btn btn-sm" onclick="document.getElementById('xlsFile2').click()" style="border-color:#00A86B;color:#00624A">
-            ➕ Weitere Datei hinzufügen
-          </button>
-          <input type="file" id="xlsFile2" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleMultiFiles(this.files, true)">
+          <div id="fileChipList" style="display:flex;flex-wrap:wrap;gap:6px">
+            ${(c._loadedFiles||[]).length ? (c._loadedFiles||[]).map((f,i)=>`
+              <div style="display:flex;align-items:center;gap:6px;background:#F4F5FF;border:1px solid #C7CAFF;border-radius:20px;padding:4px 10px 4px 12px;font-size:12px;color:#3B3FCC">
+                <span>📄 ${f}</span>
+                <button onclick="removeLoadedFile(${i})" style="background:none;border:none;cursor:pointer;color:#9BA0E0;font-size:14px;line-height:1;padding:0" title="Datei entfernen">✕</button>
+              </div>`).join('') : '<span style="font-size:12px;color:var(--muted);font-style:italic">Keine Dateien gespeichert</span>'}
+          </div>
+          <div style="margin-top:8px;font-size:12px;color:var(--muted)" id="loadedInfo">
+            ${c.monthly ? '✅ '+c.monthly.labels.length+' Monate geladen: '+c.monthly.labels[0]+' – '+c.monthly.labels[c.monthly.labels.length-1] : ''}
+          </div>
         </div>
 
         <!-- Monats-Vorschau -->
-        <div style="background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:14px">
-          <div style="padding:10px 16px;background:var(--bg);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Erkannte Daten</div>
-          <div style="max-height:260px;overflow-y:auto">
+        <div style="background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px">
+          <div style="padding:10px 16px;background:var(--bg);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Erkannte Monatsdaten</div>
+          <div style="max-height:240px;overflow-y:auto">
             <table style="width:100%;border-collapse:collapse;font-size:13px" id="previewTable">
               <thead>
                 <tr style="background:#F8F9FF;border-bottom:2px solid var(--border)">
@@ -1480,7 +1495,6 @@ function confirmImport() {
   if (!c) return;
   c.monthly = d;
   if (autoPosts.length) {
-    // Merge with existing posts (avoid duplicates by caption)
     const existing = new Set((c.posts||[]).map(p=>p.caption));
     const newPosts = autoPosts
       .filter(p => !existing.has(p.caption))
@@ -1491,6 +1505,11 @@ function confirmImport() {
       }));
     c.posts = [...(c.posts||[]), ...newPosts].sort((a,b)=>b.impr-a.impr).slice(0,10);
   }
+  // Save file names
+  const newNames = _multiResults.map(r => r._filename).filter(Boolean);
+  if (!c._loadedFiles) c._loadedFiles = [];
+  newNames.forEach(n => { if (!c._loadedFiles.includes(n)) c._loadedFiles.push(n); });
+
   c.updatedAt = Date.now();
   saveApp();
   _pendingImport = null;
@@ -1501,9 +1520,12 @@ function confirmImport() {
   if (ub) ub.style.display = 'none';
   if (lb) lb.style.display = '';
 
+  // Update file chip list
+  refreshFileChips();
+
   // Fill loaded info
   const li = document.getElementById('loadedInfo');
-  if (li) li.textContent = `${d.labels.length} Monate: ${d.labels[0]} – ${d.labels[d.labels.length-1]}`;
+  if (li) li.textContent = `✅ ${d.labels.length} Monate geladen: ${d.labels[0]} – ${d.labels[d.labels.length-1]}`;
 
   // Fill preview table
   const pb = document.getElementById('previewBody');
@@ -1519,6 +1541,54 @@ function confirmImport() {
   // Fill split select
   updateSplitSelect(d.labels, c.splitLabel||'');
   showToast(`${d.labels.length} Monate importiert 🎉`, 'ok');
+}
+
+function refreshFileChips() {
+  const c = getClient(ROUTE.clientId);
+  if (!c) return;
+  const el = document.getElementById('fileChipList');
+  if (!el) return;
+  const files = c._loadedFiles || [];
+  if (!files.length) {
+    el.innerHTML = '<span style="font-size:12px;color:var(--muted);font-style:italic">Keine Dateien gespeichert</span>';
+    return;
+  }
+  el.innerHTML = files.map((f,i) => `
+    <div style="display:flex;align-items:center;gap:6px;background:#F4F5FF;border:1px solid #C7CAFF;border-radius:20px;padding:4px 10px 4px 12px;font-size:12px;color:#3B3FCC">
+      <span>📄 ${f}</span>
+      <button onclick="removeLoadedFile(${i})" style="background:none;border:none;cursor:pointer;color:#9BA0E0;font-size:14px;line-height:1;padding:0" title="Datei entfernen">✕</button>
+    </div>`).join('');
+}
+
+function removeLoadedFile(idx) {
+  const c = getClient(ROUTE.clientId);
+  if (!c || !c._loadedFiles) return;
+  const fname = c._loadedFiles[idx];
+  if (!confirm(`Datei "${fname}" aus der Liste entfernen?\n\nHinweis: Die Daten bleiben erhalten — nur der Dateiname wird entfernt.`)) return;
+  c._loadedFiles.splice(idx, 1);
+  saveApp();
+  refreshFileChips();
+}
+
+function clearAllData() {
+  const c = getClient(ROUTE.clientId);
+  if (!c) return;
+  if (!confirm('Alle Daten für diesen Kunden löschen?\n\nDas betrifft: Monatsdaten, Top-Posts und die Dateiliste.\nCI-Einstellungen bleiben erhalten.')) return;
+  c.monthly = null;
+  c.posts = [];
+  c._loadedFiles = [];
+  c.recommendations = null;
+  c.contentMix = null;
+  c.updatedAt = Date.now();
+  saveApp();
+  // Show upload box again
+  const ub = document.getElementById('uploadBox');
+  const lb = document.getElementById('dataLoadedBox');
+  const ip = document.getElementById('importPreview');
+  if (ub) ub.style.display = '';
+  if (lb) lb.style.display = 'none';
+  if (ip) { ip.style.display = 'none'; ip.innerHTML = ''; }
+  showToast('🗑️ Alle Daten gelöscht — neue Datei hochladen', 'ok');
 }
 
 function applyManualData() {
