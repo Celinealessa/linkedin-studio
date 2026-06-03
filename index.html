@@ -820,107 +820,99 @@ function renderEdit(container) {
     <!-- Step: Data -->
     <div id="stepData" style="${ROUTE.step==='data'?'':'display:none'}">
 
-      <!-- STATUS: noch keine Daten -->
-      <div id="uploadBox" style="${c.monthly?'display:none':''}">
+      <!-- Zentraler Daten-Bereich — immer sichtbar -->
+      <div id="dataArea">
 
-        <!-- Label wraps the input → zuverlässigste Methode für Datei-Öffnen in allen Browsern -->
-        <label for="xlsFile" id="uploadZone" style="
-          display:block;border:3px dashed #5B63FE;border-radius:16px;
-          background:linear-gradient(135deg,#F4F5FF,#ECEEFF);
-          padding:3rem 2rem;text-align:center;cursor:pointer;
-          transition:all .2s"
-          ondragover="event.preventDefault();this.style.background='#E0E2FF';this.style.borderStyle='solid'"
-          ondragleave="this.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)';this.style.borderStyle='dashed'"
-          ondrop="event.preventDefault();this.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)';this.style.borderStyle='dashed';handleMultiFiles(event.dataTransfer.files)">
-
-          <div id="uploadZoneInner">
-            <div style="font-size:56px;margin-bottom:12px">📂</div>
-            <div style="font-size:20px;font-weight:700;color:#5B63FE;margin-bottom:6px">Excel / CSV hochladen</div>
-            <div style="font-size:14px;color:#6E7A9F;margin-bottom:8px">Hier klicken oder Dateien reinziehen</div>
-            <div style="font-size:12px;color:#8B93FF;margin-bottom:16px"><strong>Mehrere Dateien gleichzeitig möglich</strong> — LinkedIn Export + Favikon CSV</div>
-            <div style="display:inline-flex;gap:8px;margin-bottom:18px">
-              <span style="background:#5B63FE;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.xlsx</span>
-              <span style="background:#5B63FE;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.xls</span>
-              <span style="background:#8B93FF;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.csv</span>
+        <!-- Status-Banner (dynamisch befüllt) -->
+        <div id="dataStatusBanner" style="${c.monthly ? 'background:#E8F8F2;border:1px solid #00A86B' : 'background:#F4F5FF;border:1px solid #C7CAFF'};border-radius:12px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div>
+            <div style="font-size:15px;font-weight:700;color:${c.monthly?'#00624A':'#3B3FCC'}" id="dataStatusTitle">
+              ${c.monthly ? '✅ Daten geladen' : '📂 Noch keine Daten'}
             </div>
-            <div style="pointer-events:none;display:inline-block;background:#5B63FE;color:#fff;font-weight:700;padding:10px 28px;border-radius:10px;font-size:15px">
-              📂 Dateien auswählen
+            <div style="font-size:12px;color:${c.monthly?'#00A86B':'#6E7A9F'};margin-top:2px" id="dataStatusSub">
+              ${c.monthly ? c.monthly.labels.length+' Monate: '+c.monthly.labels[0]+' – '+c.monthly.labels[c.monthly.labels.length-1] : 'Datei hochladen um zu starten'}
             </div>
           </div>
-          <div id="uploadZoneLoading" style="display:none">
-            <div style="font-size:40px;margin-bottom:12px">⏳</div>
-            <div style="font-size:16px;font-weight:600;color:#5B63FE" id="uploadLoadingText">Dateien werden geladen…</div>
-          </div>
-        </label>
-
-        <!-- Input direkt nach dem Label, gleiche ID -->
-        <input type="file" id="xlsFile" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleMultiFiles(this.files)">
-
-        <div style="text-align:center;margin-top:10px;font-size:12px;color:#6E7A9F">
-          Kein passendes Format?
-          <button class="btn btn-ghost btn-sm" style="font-size:12px" onclick="downloadTemplate('post')">Beispiel-Vorlage herunterladen</button>
-        </div>
-      </div>
-
-      <!-- STATUS: Daten geladen -->
-      <div id="dataLoadedBox" style="${c.monthly?'':'display:none'}">
-
-        <!-- Geladene Dateien -->
-        <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem;margin-bottom:12px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-            <div style="font-size:13px;font-weight:700;color:var(--text)">📂 Geladene Dateien</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <label for="xlsFile2" class="btn btn-sm" style="border-color:#5B63FE;color:#5B63FE;font-weight:600;cursor:pointer;margin:0">
-                ➕ Weitere Datei hinzufügen
-              </label>
-              <input type="file" id="xlsFile2" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleMultiFiles(this.files, true)">
-              <button class="btn btn-sm" onclick="clearAllData()" style="border-color:#E53E3E;color:#E53E3E">
-                🗑️ Alle Daten löschen
-              </button>
-            </div>
-          </div>
-          <div id="fileChipList" style="display:flex;flex-wrap:wrap;gap:6px">
-            ${(c._loadedFiles||[]).length ? (c._loadedFiles||[]).map((f,i)=>`
-              <div style="display:flex;align-items:center;gap:6px;background:#F4F5FF;border:1px solid #C7CAFF;border-radius:20px;padding:4px 10px 4px 12px;font-size:12px;color:#3B3FCC">
-                <span>📄 ${f}</span>
-                <button onclick="removeLoadedFile(${i})" style="background:none;border:none;cursor:pointer;color:#9BA0E0;font-size:14px;line-height:1;padding:0" title="Datei entfernen">✕</button>
-              </div>`).join('') : '<span style="font-size:12px;color:var(--muted);font-style:italic">Keine Dateien gespeichert</span>'}
-          </div>
-          <div style="margin-top:8px;font-size:12px;color:var(--muted)" id="loadedInfo">
-            ${c.monthly ? '✅ '+c.monthly.labels.length+' Monate geladen: '+c.monthly.labels[0]+' – '+c.monthly.labels[c.monthly.labels.length-1] : ''}
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            ${c.monthly ? `
+            <label for="xlsFileAdd" class="btn btn-sm" style="cursor:pointer;border-color:#5B63FE;color:#5B63FE;font-weight:600;margin:0">➕ Weitere Datei</label>
+            <input type="file" id="xlsFileAdd" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleMultiFiles(this.files,true)">
+            <button class="btn btn-sm" onclick="clearAllData()" style="border-color:#E53E3E;color:#E53E3E">🗑️ Löschen</button>
+            ` : ''}
           </div>
         </div>
 
-        <!-- Monats-Vorschau -->
+        <!-- Upload Zone (immer sichtbar wenn keine Daten, versteckt wenn Daten vorhanden) -->
+        <div id="uploadZoneWrap" style="${c.monthly?'display:none':''}">
+          <label for="xlsFile" id="uploadZone" style="display:block;border:3px dashed #5B63FE;border-radius:16px;background:linear-gradient(135deg,#F4F5FF,#ECEEFF);padding:2.5rem 2rem;text-align:center;cursor:pointer;transition:background .2s"
+            ondragover="event.preventDefault();this.style.background='#E0E2FF'"
+            ondragleave="this.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)'"
+            ondrop="event.preventDefault();this.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)';if(event.dataTransfer.files.length)handleMultiFiles(event.dataTransfer.files)">
+            <div id="uploadZoneInner">
+              <div style="font-size:48px;margin-bottom:10px">📂</div>
+              <div style="font-size:18px;font-weight:700;color:#5B63FE;margin-bottom:6px">Klicken oder Datei reinziehen</div>
+              <div style="font-size:13px;color:#6E7A9F;margin-bottom:14px">LinkedIn Export · Favikon CSV · mehrere Dateien gleichzeitig</div>
+              <div style="display:inline-flex;gap:8px;margin-bottom:16px">
+                <span style="background:#5B63FE;color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700">.xlsx</span>
+                <span style="background:#5B63FE;color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700">.xls</span>
+                <span style="background:#8B93FF;color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700">.csv</span>
+              </div>
+            </div>
+            <div id="uploadZoneLoading" style="display:none">
+              <div style="font-size:36px;margin-bottom:8px">⏳</div>
+              <div style="font-size:15px;font-weight:600;color:#5B63FE" id="uploadLoadingText">Wird verarbeitet…</div>
+            </div>
+          </label>
+          <input type="file" id="xlsFile" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleMultiFiles(this.files)">
+        </div>
+
+        <!-- Geladene Dateien Chips -->
+        <div id="fileChipList" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:${c._loadedFiles?.length?'12px':'0'}">
+          ${(c._loadedFiles||[]).map((f,i)=>`
+            <div style="display:flex;align-items:center;gap:6px;background:#F4F5FF;border:1px solid #C7CAFF;border-radius:20px;padding:4px 10px 4px 12px;font-size:12px;color:#3B3FCC">
+              <span>📄 ${f}</span>
+              <button onclick="removeLoadedFile(${i})" style="background:none;border:none;cursor:pointer;color:#9BA0E0;font-size:14px;padding:0">✕</button>
+            </div>`).join('')}
+        </div>
+
+        <!-- Monatsdaten Tabelle (nur wenn Daten vorhanden) -->
+        ${c.monthly ? `
         <div style="background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px">
-          <div style="padding:10px 16px;background:var(--bg);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Erkannte Monatsdaten</div>
-          <div style="max-height:240px;overflow-y:auto">
+          <div style="padding:8px 14px;background:var(--bg);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Erkannte Monatsdaten</div>
+          <div style="max-height:220px;overflow-y:auto">
             <table style="width:100%;border-collapse:collapse;font-size:13px" id="previewTable">
-              <thead>
-                <tr style="background:#F8F9FF;border-bottom:2px solid var(--border)">
-                  <th style="padding:8px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--muted)">Monat</th>
-                  <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Impressionen</th>
-                  <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Follower</th>
-                  <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Engagements</th>
-                  <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Posts</th>
-                </tr>
-              </thead>
+              <thead><tr style="background:#F8F9FF;border-bottom:2px solid var(--border)">
+                <th style="padding:8px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--muted)">Monat</th>
+                <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Impressionen</th>
+                <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Follower</th>
+                <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Engagements</th>
+                <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Posts</th>
+              </tr></thead>
               <tbody id="previewBody">
-                ${c.monthly ? c.monthly.labels.map((l,i)=>`<tr style="border-bottom:1px solid var(--border)"><td style="padding:7px 14px;font-family:'DM Mono',monospace;font-size:12px">${l}</td><td style="padding:7px 14px;text-align:right">${(c.monthly.impressions[i]||0).toLocaleString('de-DE')}</td><td style="padding:7px 14px;text-align:right">${(c.monthly.followers[i]||0).toLocaleString('de-DE')}</td><td style="padding:7px 14px;text-align:right">${(c.monthly.engagements[i]||0).toLocaleString('de-DE')}</td><td style="padding:7px 14px;text-align:right">${c.monthly.postsPerMonth[i]||0}</td></tr>`).join('') : '' }
+                ${c.monthly.labels.map((l,i)=>`<tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:7px 14px;font-family:'DM Mono',monospace;font-size:12px">${l}</td>
+                  <td style="padding:7px 14px;text-align:right">${(c.monthly.impressions[i]||0).toLocaleString('de-DE')}</td>
+                  <td style="padding:7px 14px;text-align:right">${(c.monthly.followers[i]||0).toLocaleString('de-DE')}</td>
+                  <td style="padding:7px 14px;text-align:right">${(c.monthly.engagements[i]||0).toLocaleString('de-DE')}</td>
+                  <td style="padding:7px 14px;text-align:right">${c.monthly.postsPerMonth[i]||0}</td>
+                </tr>`).join('')}
               </tbody>
             </table>
           </div>
-        </div>
+        </div>` : ''}
 
         <!-- Vergleichspunkt -->
-        <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem;margin-bottom:14px">
-          <div style="font-size:13px;font-weight:600;margin-bottom:4px">⚖️ Vorher / Nachher Vergleich <span style="font-size:11px;color:var(--muted);font-weight:400">— optional</span></div>
-          <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Ab welchem Monat habt ihr zusammengearbeitet?</div>
-          <select class="form-input" id="splitSel" style="max-width:280px">
-            <option value="">— kein Vergleich —</option>
-            ${c.monthly ? c.monthly.labels.map(l=>`<option value="${l}" ${l===c.splitLabel?'selected':''}>${l}</option>`).join('') : ''}
-          </select>
+        <div id="splitSection" style="${c.monthly?'':'display:none'}">
+          <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem;margin-bottom:14px">
+            <div style="font-size:13px;font-weight:600;margin-bottom:4px">⚖️ Vorher / Nachher Vergleich <span style="font-size:11px;color:var(--muted);font-weight:400">— optional</span></div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Ab welchem Monat habt ihr zusammengearbeitet?</div>
+            <select class="form-input" id="splitSel" style="max-width:280px">
+              <option value="">— kein Vergleich —</option>
+              ${c.monthly ? c.monthly.labels.map(l=>`<option value="${l}" ${l===c.splitLabel?'selected':''}>${l}</option>`).join('') : ''}
+            </select>
+          </div>
         </div>
+
       </div>
 
       <!-- Import Preview — shown after file parse, before confirming -->
@@ -1474,9 +1466,9 @@ function finalizeMultiImport() {
 
   if (!finalResult) { showToast('Zusammenführen fehlgeschlagen','warn'); return; }
 
-  const fileCount = _multiResults.length;
-  showToast(`✅ ${fileCount} Datei${fileCount>1?'en':''} zusammengeführt — ${finalResult.months} Monate`, 'success');
-  showImportPreview(finalResult.d, finalResult.mode, finalResult.months, finalResult.totalRows, finalResult.autoPosts, finalResult._mergeLabel);
+  // Direkt speichern — sofort, kein extra Klick nötig
+  _pendingImport = { d: finalResult.d, autoPosts: finalResult.autoPosts || [] };
+  confirmImport();
 }
 
 // ── Preview before confirming
@@ -1528,8 +1520,8 @@ function showImportPreview(d, mode, months, totalRows, autoPosts, mergeLabel) {
         </table>
       </div>
       ${autoPostNote}
-      <div style="display:flex;justify-content:flex-end;margin-top:10px">
-        <button class="btn btn-primary btn-sm" onclick="confirmImport()">✅ Daten übernehmen</button>
+      <div style="margin-top:10px;padding:8px 12px;background:#E8F8F2;border-radius:7px;font-size:13px;color:#00624A;font-weight:600">
+        ✅ Daten gespeichert — Dashboard kann jetzt generiert werden
       </div>
     </div>`;
 
@@ -1543,41 +1535,43 @@ function confirmImport() {
   const { d, autoPosts } = _pendingImport;
   const c = getClient(ROUTE.clientId);
   if (!c) return;
+
+  // Save data
   c.monthly = d;
-  if (autoPosts.length) {
+  if (autoPosts && autoPosts.length) {
     const existing = new Set((c.posts||[]).map(p=>p.caption));
-    const newPosts = autoPosts
-      .filter(p => !existing.has(p.caption))
-      .map(p => ({
-        caption: p.caption, label: p.date || '',
-        impr: p.impr, likes: p.likes || 0, comments: p.comm || 0,
-        shares: p.shar || 0, eng: p.eng || 0, url: p.url || '', type: 'story'
-      }));
+    const newPosts = autoPosts.filter(p => !existing.has(p.caption)).map(p => ({
+      caption: p.caption, label: p.date || '',
+      impr: p.impr, likes: p.likes || 0, comments: p.comm || 0,
+      shares: p.shar || 0, eng: p.eng || 0, url: p.url || '', type: 'story'
+    }));
     c.posts = [...(c.posts||[]), ...newPosts].sort((a,b)=>b.impr-a.impr).slice(0,10);
   }
-  // Save file names
-  const newNames = _multiResults.map(r => r._filename).filter(Boolean);
+  const newNames = (_multiResults||[]).map(r => r._filename).filter(Boolean);
   if (!c._loadedFiles) c._loadedFiles = [];
   newNames.forEach(n => { if (!c._loadedFiles.includes(n)) c._loadedFiles.push(n); });
-
   c.updatedAt = Date.now();
   saveApp();
   _pendingImport = null;
 
-  // Switch UI: hide upload box, show loaded box
-  const ub = document.getElementById('uploadBox');
-  const lb = document.getElementById('dataLoadedBox');
-  if (ub) ub.style.display = 'none';
-  if (lb) lb.style.display = '';
+  // Update status banner
+  const title = document.getElementById('dataStatusTitle');
+  const sub   = document.getElementById('dataStatusSub');
+  const banner= document.getElementById('dataStatusBanner');
+  if (title) title.innerHTML = '✅ Daten gespeichert!';
+  if (sub)   sub.textContent = `${d.labels.length} Monate: ${d.labels[0]} – ${d.labels[d.labels.length-1]}`;
+  if (banner) { banner.style.background='#E8F8F2'; banner.style.border='1px solid #00A86B'; }
 
-  // Update file chip list
+  // Hide upload zone, show split section
+  const uz = document.getElementById('uploadZoneWrap');
+  if (uz) uz.style.display = 'none';
+  const ss = document.getElementById('splitSection');
+  if (ss) ss.style.display = '';
+
+  // Update file chips
   refreshFileChips();
 
-  // Fill loaded info
-  const li = document.getElementById('loadedInfo');
-  if (li) li.textContent = `✅ ${d.labels.length} Monate geladen: ${d.labels[0]} – ${d.labels[d.labels.length-1]}`;
-
-  // Fill preview table
+  // Rebuild preview table
   const pb = document.getElementById('previewBody');
   if (pb) pb.innerHTML = d.labels.map((l,i) => `
     <tr style="border-bottom:1px solid var(--border)">
@@ -1588,12 +1582,19 @@ function confirmImport() {
       <td style="padding:7px 14px;text-align:right">${d.postsPerMonth[i]||0}</td>
     </tr>`).join('');
 
-  // Hide import preview
-  const ip = document.getElementById('importPreview');
-  if (ip) { ip.style.display = 'none'; ip.innerHTML = ''; }
-
-  // Fill split select
+  // Rebuild split select
   updateSplitSelect(d.labels, c.splitLabel||'');
+
+  // Add "weitere Datei" button to banner if not present
+  const bannerBtns = document.getElementById('dataStatusBannerBtns');
+  if (!bannerBtns) {
+    const addBtn = document.createElement('div');
+    addBtn.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center';
+    addBtn.innerHTML = `<label for="xlsFileAdd" class="btn btn-sm" style="cursor:pointer;border-color:#5B63FE;color:#5B63FE;font-weight:600;margin:0">➕ Weitere Datei</label>
+      <button class="btn btn-sm" onclick="clearAllData()" style="border-color:#E53E3E;color:#E53E3E">🗑️ Löschen</button>`;
+    banner?.appendChild(addBtn);
+  }
+
   showToast(`✅ ${d.labels.length} Monate importiert!`, 'ok');
 }
 
@@ -1635,13 +1636,8 @@ function clearAllData() {
   c.contentMix = null;
   c.updatedAt = Date.now();
   saveApp();
-  // Show upload box again
-  const ub = document.getElementById('uploadBox');
-  const lb = document.getElementById('dataLoadedBox');
-  const ip = document.getElementById('importPreview');
-  if (ub) ub.style.display = '';
-  if (lb) lb.style.display = 'none';
-  if (ip) { ip.style.display = 'none'; ip.innerHTML = ''; }
+  // Re-render edit view to show empty state
+  navigate('edit', ROUTE.clientId, 'data');
   showToast('🗑️ Alle Daten gelöscht — neue Datei hochladen', 'ok');
 }
 
