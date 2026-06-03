@@ -629,7 +629,7 @@ const APP = loadApp();
     id: 'payback2025',
     ci: { client:'PAYBACK', person:'Dominik Dommick', period:'Jun 2025 – Jun 2026', primary:'#003087', accent:'#FFD100', logo:'P', logoImg:'', agency:'Branding People GmbH', ...(base.ci||{}) },
     monthly: paybackMonthly,
-    posts: paybackPosts,
+    posts: (base.posts && base.posts.length > 0) ? base.posts : paybackPosts,
     _loadedFiles: ['AggregateAnalytics_Dominik Dommick_2025-06-04_2026-06-03.xlsx'],
     updatedAt: Date.now()
   };
@@ -2201,6 +2201,16 @@ function buildDashHTML(c, ins) {
   });
   html += `</div>
 
+  <div style="margin-top:12px;margin-bottom:1.5rem">
+    <div class="strat-card" style="cursor:text;position:relative" onclick="editCustomNote('${c.id}')">
+      <button class="strat-edit-btn" style="opacity:1" onclick="event.stopPropagation();editCustomNote('${c.id}')">✏️ Bearbeiten</button>
+      ${c.customNote
+        ? `<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;padding-top:4px">${c.customNote.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`
+        : `<div style="color:var(--muted);font-size:13px;font-style:italic;padding:1rem 0">+ Eigene Notiz oder Empfehlung hinzufügen…</div>`
+      }
+    </div>
+  </div>
+
   <div class="section-hd"><span class="section-lbl">Empfohlener Content-Mix pro Monat</span><div class="section-line"></div></div>
   <div class="mix-grid">`;
   mix.forEach((mx,i) => {
@@ -2443,6 +2453,31 @@ function hexToRgb(hex) {
 function contrastColor(hex) {
   try { const [r,g,b]=hexToRgb(hex); return (r*0.299+g*0.587+b*0.114)>140?'#1A1F36':'#FFFFFF'; }
   catch { return '#FFFFFF'; }
+}
+
+function editCustomNote(clientId) {
+  const c = getClient(clientId || ROUTE.clientId); if(!c) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'customNoteOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `<div style="background:var(--card);border-radius:16px;padding:28px;width:min(560px,95vw);box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="font-weight:700;font-size:16px;margin-bottom:14px">📝 Eigene Notiz / Empfehlung</div>
+    <textarea id="customNoteTA" style="width:100%;height:180px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-size:13px;font-family:'DM Sans',sans-serif;resize:vertical;background:var(--bg);color:var(--text);box-sizing:border-box" placeholder="Hier eigene Empfehlungen, Notizen oder Maßnahmen eintragen…">${(c.customNote||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+      <button onclick="document.getElementById('customNoteOverlay').remove()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:none;cursor:pointer;font-family:'DM Sans',sans-serif">Abbrechen</button>
+      <button onclick="saveCustomNote('${clientId||ROUTE.clientId}')" style="padding:8px 18px;border-radius:8px;background:var(--primary);color:#fff;border:none;cursor:pointer;font-weight:600;font-family:'DM Sans',sans-serif">Speichern</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  setTimeout(()=>document.getElementById('customNoteTA').focus(),50);
+}
+function saveCustomNote(clientId) {
+  const c = getClient(clientId); if(!c) return;
+  const ta = document.getElementById('customNoteTA'); if(!ta) return;
+  c.customNote = ta.value;
+  saveApp();
+  document.getElementById('customNoteOverlay')?.remove();
+  navigate('dash', ROUTE.clientId);
 }
 
 function resetRecsToBlank(clientId) {
