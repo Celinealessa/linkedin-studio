@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-19 -->
+<!-- v20260603-20 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: fetch latest version silently, reload if newer
 (function(){
-  const MY_V = 'v20260603-19';
+  const MY_V = 'v20260603-20';
   if (sessionStorage.getItem('_lv') === MY_V) return; // already checked this session
   sessionStorage.setItem('_lv', MY_V);
   fetch(location.pathname + '?_t=' + Date.now(), {cache:'no-store'})
@@ -1021,7 +1021,7 @@ function renderEdit(container) {
     <!-- Step: Posts -->
     <div id="stepPosts" style="${ROUTE.step==='posts'?'':'display:none'}">
       <div class="edit-section">
-        <div class="edit-section-title">🏆 Top-Posts <span style="font-size:11px;color:var(--muted);font-weight:400">— optional</span></div>
+        <div class="edit-section-title">🏆 Top-Posts <span style="font-size:11px;color:var(--muted);font-weight:400">— beste Beiträge</span></div>
         <div class="dt-wrap">
           <table class="dt">
             <thead><tr>
@@ -1039,9 +1039,33 @@ function renderEdit(container) {
             <tbody id="postsBody"></tbody>
           </table>
         </div>
-        <div class="add-row" onclick="addPostRow()">＋ Post hinzufügen</div>
+        <div class="add-row" onclick="addPostRow()">＋ Top-Post hinzufügen</div>
       </div>
-      <div style="display:flex;justify-content:space-between">
+
+      <div class="edit-section" style="margin-top:16px;border-color:#FECACA">
+        <div class="edit-section-title" style="color:#C0392B">📉 Flop-Posts <span style="font-size:11px;color:var(--muted);font-weight:400">— schwächste Beiträge</span></div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Trage hier die 5 Posts mit den wenigsten Impressionen manuell ein.</div>
+        <div class="dt-wrap">
+          <table class="dt">
+            <thead><tr>
+              <th class="t-left" style="min-width:200px">Caption / Zitat</th>
+              <th class="t-left" style="min-width:130px">Label (Titel · Datum)</th>
+              <th style="min-width:90px">Impressionen</th>
+              <th style="min-width:70px">Likes</th>
+              <th style="min-width:70px">Kommentare</th>
+              <th style="min-width:70px">Shares</th>
+              <th style="min-width:80px">Engagement</th>
+              <th class="t-left" style="min-width:130px">URL</th>
+              <th style="min-width:140px">Content-Typ</th>
+              <th></th>
+            </tr></thead>
+            <tbody id="flopPostsBody"></tbody>
+          </table>
+        </div>
+        <div class="add-row" onclick="addFlopPostRow()" style="color:#C0392B;border-color:#FECACA">＋ Flop-Post hinzufügen</div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;margin-top:16px">
         <button class="btn" onclick="autoSavePosts();setStep('data')">← Zurück</button>
         <button class="btn btn-primary" onclick="savePostsAndDash()">🚀 Dashboard generieren</button>
       </div>
@@ -1052,6 +1076,7 @@ function renderEdit(container) {
   if (c._manualMode && c.monthly) restoreManualRows(c.monthly);
   else if (!c._manualMode) buildManRows([]);
   restorePostsRows(c.posts || []);
+  restoreFlopPostsRows(c.flopPosts || []);
   updateSplitSelect(c.monthly?.labels || [], c.splitLabel || '');
 }
 
@@ -1067,7 +1092,7 @@ function setStep(step) {
   // Restore posts rows whenever posts step is shown
   if (step === 'posts') {
     const c = getClient(ROUTE.clientId);
-    if (c) restorePostsRows(c.posts || []);
+    if (c) { restorePostsRows(c.posts || []); restoreFlopPostsRows(c.flopPosts || []); }
   }
 }
 
@@ -2042,6 +2067,40 @@ function restorePostsRows(posts) {
   tbody.innerHTML = ''; _pRowId = 0;
   posts.forEach(p => addPostRow(p.caption, p.label, p.impr, p.likes||0, p.comments||0, p.shares||0, p.eng||0, p.url||'', p.type));
 }
+function addFlopPostRow(cap='', lbl='', impr='', likes='', comm='', shares='', eng='', url='', type='story') {
+  _pRowId++;
+  const tbody = document.getElementById('flopPostsBody');
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  const opts = Object.entries(TYPE_META).map(([v,m])=>`<option value="${v}" ${v===type?'selected':''}>${m.label}</option>`).join('');
+  tr.innerHTML = `
+    <td class="t-left"><input value="${esc(cap)}" placeholder="Caption…" style="width:200px;text-align:left;font-family:'DM Sans',sans-serif"></td>
+    <td class="t-left"><input value="${esc(lbl)}" placeholder="Titel · Monat Jahr" style="width:130px;text-align:left;font-family:'DM Sans',sans-serif"></td>
+    <td><input type="number" value="${impr}" placeholder="0"></td>
+    <td><input type="number" value="${likes}" placeholder="0"></td>
+    <td><input type="number" value="${comm}" placeholder="0"></td>
+    <td><input type="number" value="${shares}" placeholder="0"></td>
+    <td><input type="number" value="${eng}" placeholder="0"></td>
+    <td class="t-left"><input value="${esc(url)}" placeholder="https://…" style="width:130px;text-align:left;font-family:'DM Sans',sans-serif"></td>
+    <td><select style="width:140px;padding:4px 7px;border:1px solid var(--border);border-radius:5px;font-size:12px;font-family:'DM Sans',sans-serif;background:#fff">${opts}</select></td>
+    <td><button class="del-btn" onclick="this.closest('tr').remove()">✕</button></td>`;
+  tbody.appendChild(tr);
+}
+function restoreFlopPostsRows(posts) {
+  const tbody = document.getElementById('flopPostsBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  (posts||[]).forEach(p => addFlopPostRow(p.caption, p.label, p.impr, p.likes||0, p.comments||0, p.shares||0, p.eng||0, p.url||'', p.type));
+}
+function readFlopPosts() {
+  return [...document.querySelectorAll('#flopPostsBody tr')].map(tr => {
+    const inp = tr.querySelectorAll('input');
+    const sel = tr.querySelector('select');
+    const cap = inp[0]?.value.trim();
+    if (!cap) return null;
+    return { caption:cap, label:inp[1]?.value.trim(), impr:toN(inp[2]?.value), likes:toN(inp[3]?.value), comments:toN(inp[4]?.value), shares:toN(inp[5]?.value), eng:toN(inp[6]?.value), url:inp[7]?.value.trim(), type:sel?.value||'story' };
+  }).filter(Boolean).sort((a,b)=>a.impr-b.impr);
+}
 function readPosts() {
   return [...document.querySelectorAll('#postsBody tr')].map(tr => {
     const inp = tr.querySelectorAll('input');
@@ -2055,6 +2114,7 @@ function autoSavePosts() {
   const c = getClient(ROUTE.clientId);
   if (!c) return;
   c.posts = readPosts();
+  c.flopPosts = readFlopPosts();
   c.updatedAt = Date.now();
   saveApp();
 }
@@ -2062,6 +2122,7 @@ function savePostsAndDash() {
   const c = getClient(ROUTE.clientId);
   if (!c) return;
   c.posts = readPosts();
+  c.flopPosts = readFlopPosts();
   c.updatedAt = Date.now();
   saveApp();
   navigate('dash', ROUTE.clientId);
