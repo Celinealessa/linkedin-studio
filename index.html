@@ -409,6 +409,18 @@ body {
 .post-meta { font-size:10px; color:var(--muted); font-family:'DM Mono',monospace; margin-top:2px; }
 .post-pill { font-size:10px; font-weight:600; padding:2px 8px; border-radius:20px; white-space:nowrap; }
 .post-impr { font-size:14px; font-weight:600; font-family:'DM Mono',monospace; text-align:right; min-width:60px; }
+/* Post overlay modal */
+#postOverlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; align-items:center; justify-content:center; padding:20px; }
+#postOverlay.open { display:flex; }
+#postOverlayBox { background:#fff; border-radius:18px; padding:28px 28px 24px; max-width:560px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,0.25); position:relative; max-height:90vh; overflow-y:auto; }
+.po-close { position:absolute; top:14px; right:16px; background:none; border:none; font-size:20px; cursor:pointer; color:#9BA0E0; line-height:1; }
+.po-rank { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:#9BA0E0; margin-bottom:10px; }
+.po-caption { font-size:15px; line-height:1.55; color:#1A1D2E; margin-bottom:18px; font-weight:500; }
+.po-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(100px,1fr)); gap:10px; margin-bottom:20px; }
+.po-metric { background:#F4F5FF; border-radius:10px; padding:12px 14px; text-align:center; }
+.po-metric-val { font-size:22px; font-weight:700; font-family:'DM Mono',monospace; color:#3B3FCC; }
+.po-metric-lbl { font-size:10px; color:#6E7A9F; font-weight:600; text-transform:uppercase; letter-spacing:.06em; margin-top:2px; }
+.po-btn { display:inline-flex; align-items:center; gap:6px; background:#0077B5; color:#fff; border:none; border-radius:8px; padding:10px 18px; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; }
 
 /* Insight cards */
 .insight-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:1.25rem; }
@@ -543,6 +555,15 @@ body {
 <!-- ══════════════════════════════════════════
      CONFIRM DELETE MODAL
 ══════════════════════════════════════════ -->
+
+<!-- POST OVERLAY -->
+<div id="postOverlay" onclick="if(event.target===this)closePostOverlay()">
+  <div id="postOverlayBox">
+    <button class="po-close" onclick="closePostOverlay()">✕</button>
+    <div id="postOverlayContent"></div>
+  </div>
+</div>
+
 <div class="overlay" id="deleteModal">
   <div class="modal">
     <div class="modal-h">
@@ -1190,6 +1211,10 @@ function parseDate(val) {
   const en1 = s.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s*(\d{4})/);
   if (en1) { const mi=miFromStr(en1[1]); if(mi>=0) return {year:+en1[3],month:mi}; }
 
+  // US: M/D/YYYY or MM/DD/YYYY (LinkedIn AggregateAnalytics export)
+  const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (us) return { year:+us[3], month:+us[1]-1 };
+
   // MM/YYYY or MM-YYYY
   const my = s.match(/^(\d{2})[\/\-](\d{4})$/);
   if (my) return { year:+my[2], month:+my[1]-1 };
@@ -1281,6 +1306,12 @@ function smartImport_collect(data, type, filename) {
       rows = parseCSV(data);
     } else {
       const wb = XLSX.read(data, { type:'array', cellDates:false, raw:false });
+      // ── LinkedIn AggregateAnalytics format detection (ENGAGEMENT, TOP POSTS, FOLLOWERS sheets)
+      const liSheets = ['ENGAGEMENT','TOP POSTS','FOLLOWERS','DISCOVERY'];
+      if (wb.SheetNames.some(n => liSheets.includes(n))) {
+        const result = parseLinkedInAggregateAnalytics(wb);
+        if (result) { result._filename = filename; _multiResults.push(result); return; }
+      }
       let bestRows=[], bestScore=-1;
       for (const name of wb.SheetNames) {
         const ws = wb.Sheets[name];
@@ -1305,6 +1336,125 @@ function smartImport_collect(data, type, filename) {
 
 function processDataFile(file) { handleMultiFiles([file]); }
 function smartImport_fromXLSX(buf) { _multiResults=[]; smartImport_collect(buf,'xlsx','datei'); finalizeMultiImport(); }
+
+// ── Extract readable caption from LinkedIn post URL slug
+function extractCaptionFromUrl(url) {
+  if (!url) return '';
+  try {
+    const m = url.match(/\/posts\/[^_/]+_(.+?)(?:\?|#|$)/);
+    if (!m) return url.split('/').pop().slice(0,80);
+    let slug = decodeURIComponent(m[1]);
+    // Remove trailing post ID + short code (e.g. -7404056454661320706-AcMt)
+    slug = slug.replace(/-[A-Za-z0-9]{3,6}$/, '').replace(/-\d{15,}$/, '');
+    // Remove action type suffix
+    slug = slug.replace(/-(share|ugcPost|activity|videoActivity)$/i, '');
+    return slug.replace(/-/g, ' ').trim();
+  } catch(e) { return ''; }
+}
+
+// ── LinkedIn AggregateAnalytics Excel parser (ENGAGEMENT + TOP POSTS + FOLLOWERS sheets)
+function parseLinkedInAggregateAnalytics(wb) {
+  const engWs  = wb.Sheets['ENGAGEMENT'];
+  const topWs  = wb.Sheets['TOP POSTS'];
+  const follWs = wb.Sheets['FOLLOWERS'];
+  if (!engWs) return null;
+
+  const engRows = XLSX.utils.sheet_to_json(engWs, {header:1, defval:'', raw:false});
+  // Header row 0: ["Date","Impressions","Engagements"]
+  const monthMap = new Map();
+  for (let i = 1; i < engRows.length; i++) {
+    const row = engRows[i];
+    const dateStr = String(row[0]||'').trim();
+    if (!dateStr) continue;
+    const parsed = parseDate(dateStr);
+    if (!parsed) continue;
+    const key = `${parsed.year}-${String(parsed.month+1).padStart(2,'0')}`;
+    if (!monthMap.has(key)) {
+      monthMap.set(key, {label:fmtMonthLabel(parsed.year,parsed.month), sortKey:key,
+        impressions:0, engagements:0, newFollowers:0, followers:0});
+    }
+    const m = monthMap.get(key);
+    m.impressions += parseNum(row[1]);
+    m.engagements += parseNum(row[2]);
+  }
+
+  // FOLLOWERS sheet → new followers per month + total at end
+  let totalFollowers = 0;
+  if (follWs) {
+    const follRows = XLSX.utils.sheet_to_json(follWs, {header:1, defval:'', raw:false});
+    totalFollowers = parseNum(follRows[0]?.[1]) || 0; // row 0: ["Total followers on DATE","4484"]
+    let dataStart = -1;
+    for (let i = 0; i < Math.min(5, follRows.length); i++) {
+      if (String(follRows[i][0]||'').toLowerCase().includes('date')) { dataStart = i+1; break; }
+    }
+    if (dataStart >= 0) {
+      for (let i = dataStart; i < follRows.length; i++) {
+        const row = follRows[i];
+        const parsed = parseDate(String(row[0]||'').trim());
+        if (!parsed) continue;
+        const key = `${parsed.year}-${String(parsed.month+1).padStart(2,'0')}`;
+        const m = monthMap.get(key);
+        if (m) m.newFollowers += parseNum(row[1]);
+      }
+    }
+  }
+
+  const sorted = [...monthMap.values()].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
+
+  // Build cumulative followers (work backwards from known total)
+  if (totalFollowers > 0 && sorted.length > 0) {
+    let cumul = totalFollowers;
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      sorted[i].followers = Math.round(cumul);
+      cumul -= sorted[i].newFollowers;
+      if (cumul < 0) cumul = 0;
+    }
+  }
+
+  const d = {
+    labels:       sorted.map(m => m.label),
+    impressions:  sorted.map(m => m.impressions),
+    followers:    sorted.map(m => m.followers),
+    engagements:  sorted.map(m => m.engagements),
+    postsPerMonth:sorted.map(() => 0),
+    _sortKeys:    sorted.map(m => m.sortKey)
+  };
+
+  // TOP POSTS sheet — two side-by-side tables merged by URL
+  const autoPosts = [];
+  if (topWs && d.labels.length > 0) {
+    const topRows = XLSX.utils.sheet_to_json(topWs, {header:1, defval:'', raw:false});
+    // Row 2: ["Post URL","Post Publish Date","Engagements","","Post URL","Post Publish Date","Impressions"]
+    // Row 3+: data
+    const postMap = new Map();
+    for (let i = 3; i < topRows.length; i++) {
+      const row = topRows[i];
+      // Left list: top by Engagements
+      const url1 = String(row[0]||'').trim();
+      if (url1 && url1.includes('linkedin.com')) {
+        if (!postMap.has(url1)) postMap.set(url1, {url:url1, date:String(row[1]||'').trim(), eng:0, impr:0});
+        postMap.get(url1).eng = Math.max(postMap.get(url1).eng, parseNum(row[2]));
+      }
+      // Right list: top by Impressions
+      const url2 = String(row[4]||'').trim();
+      if (url2 && url2.includes('linkedin.com')) {
+        if (!postMap.has(url2)) postMap.set(url2, {url:url2, date:String(row[5]||'').trim(), eng:0, impr:0});
+        postMap.get(url2).impr = Math.max(postMap.get(url2).impr, parseNum(row[6]));
+      }
+    }
+    [...postMap.values()]
+      .sort((a,b) => b.impr - a.impr || b.eng - a.eng)
+      .slice(0, 10)
+      .forEach(p => {
+        const caption = extractCaptionFromUrl(p.url);
+        autoPosts.push({impr:p.impr, eng:p.eng, likes:0, comm:0, shar:0,
+          caption: caption || p.url.slice(-60), date:p.date, url:p.url});
+      });
+  }
+
+  if (!d.labels.length) return null;
+  return { d, mode:'post-level', months:d.labels.length, totalRows:sorted.length, autoPosts };
+}
 function smartImport_fromCSV(text) { _multiResults=[]; smartImport_collect(text,'csv','datei'); finalizeMultiImport(); }
 
 function smartImport(rows) {
@@ -1645,6 +1795,54 @@ function clearAllData() {
   showToast('🗑️ Alle Daten gelöscht — neue Datei hochladen', 'ok');
 }
 
+// ── Post Overlay Modal
+function openPostOverlay(idx) {
+  const c = getClient(ROUTE.clientId);
+  if (!c || !c.posts || !c.posts[idx]) return;
+  const post = c.posts[idx];
+  const tm = TYPE_META[post.type] || TYPE_META.story;
+  const rc = idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':`#${idx+1}`;
+
+  // Build metrics grid
+  const metrics = [];
+  if (post.impr)     metrics.push({val:post.impr.toLocaleString('de-DE'),    lbl:'Impressionen', icon:'👁️'});
+  if (post.eng)      metrics.push({val:post.eng.toLocaleString('de-DE'),     lbl:'Engagements',  icon:'⚡'});
+  if (post.likes)    metrics.push({val:post.likes.toLocaleString('de-DE'),   lbl:'Likes',        icon:'👍'});
+  if (post.comments) metrics.push({val:post.comments.toLocaleString('de-DE'),lbl:'Kommentare',   icon:'💬'});
+  if (post.shares)   metrics.push({val:post.shares.toLocaleString('de-DE'),  lbl:'Reposts',      icon:'🔁'});
+  // Engagement rate if possible
+  if (post.impr && post.eng) {
+    const rate = ((post.eng / post.impr)*100).toFixed(2).replace('.',',');
+    metrics.push({val:rate+'%', lbl:'Engagement-Rate', icon:'📊'});
+  }
+
+  const metricsHtml = metrics.map(m => `
+    <div class="po-metric">
+      <div style="font-size:18px;margin-bottom:2px">${m.icon}</div>
+      <div class="po-metric-val">${m.val}</div>
+      <div class="po-metric-lbl">${m.lbl}</div>
+    </div>`).join('');
+
+  const caption = post.caption || '—';
+  const dateInfo = post.label ? `<span style="background:#F0F1FF;color:#5B63FE;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600">${post.label}</span>` : '';
+  const typeInfo = `<span style="background:${tm.bg};color:${tm.col};padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600">${tm.label}</span>`;
+
+  document.getElementById('postOverlayContent').innerHTML = `
+    <div class="po-rank">${rc} Top-Post</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${dateInfo}${typeInfo}</div>
+    <div class="po-caption">${caption}</div>
+    ${metrics.length ? `<div class="po-metrics">${metricsHtml}</div>` : ''}
+    ${post.url ? `<a href="${post.url}" target="_blank" class="po-btn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"/></svg>
+      Auf LinkedIn öffnen
+    </a>` : ''}`;
+
+  document.getElementById('postOverlay').classList.add('open');
+}
+function closePostOverlay() {
+  document.getElementById('postOverlay').classList.remove('open');
+}
+
 function applyManualData() {
   const d = readManualData();
   if (!d.labels.length) { showToast('Bitte mindestens 1 Monat eingeben','warn'); return; }
@@ -1906,9 +2104,9 @@ function buildDashHTML(c, ins) {
       if (post.comments) metaParts.push('💬 '+post.comments.toLocaleString('de-DE'));
       if (post.shares) metaParts.push('🔁 '+post.shares.toLocaleString('de-DE'));
       if (post.eng && !post.likes) metaParts.push('⚡ '+post.eng.toLocaleString('de-DE')+' Engagements');
-      html += `<div class="post-row">
+      html += `<div class="post-row" onclick="openPostOverlay(${i})" style="cursor:pointer" title="Details anzeigen">
         <div class="post-rank ${rc}">#${i+1}</div>
-        <div style="flex:1;min-width:0"><div class="post-cap">${post.url?`<a href="${post.url}" target="_blank" style="color:inherit;text-decoration:none" title="Post auf LinkedIn öffnen">${post.caption||'—'} 🔗</a>`:(post.caption||'—')}</div><div class="post-meta">${metaParts.join(' · ')}</div></div>
+        <div style="flex:1;min-width:0"><div class="post-cap">${post.caption||'—'}${post.url?' 🔗':''}</div><div class="post-meta">${metaParts.join(' · ')}</div></div>
         <div class="post-pill" style="background:${tm.bg};color:${tm.col}">${tm.label}</div>
         <div class="post-impr" style="color:${p}">${fmt(post.impr)}<div style="font-size:9px;color:var(--muted);font-weight:400">Impressionen</div></div>
       </div>`;
