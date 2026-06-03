@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-21 -->
+<!-- v20260603-22 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: fetch latest version silently, reload if newer
 (function(){
-  const MY_V = 'v20260603-21';
+  const MY_V = 'v20260603-22';
   if (sessionStorage.getItem('_lv') === MY_V) return; // already checked this session
   sessionStorage.setItem('_lv', MY_V);
   fetch(location.pathname + '?_t=' + Date.now(), {cache:'no-store'})
@@ -2092,7 +2092,7 @@ function autoSavePosts() {
   const c = getClient(ROUTE.clientId);
   if (!c) return;
   c.posts = readPosts();
-  c.flopPosts = readFlopPosts();
+  if (document.getElementById('flopPostsBody')) c.flopPosts = readFlopPosts();
   c.updatedAt = Date.now();
   saveApp();
 }
@@ -2100,7 +2100,7 @@ function savePostsAndDash() {
   const c = getClient(ROUTE.clientId);
   if (!c) return;
   c.posts = readPosts();
-  c.flopPosts = readFlopPosts();
+  if (document.getElementById('flopPostsBody')) c.flopPosts = readFlopPosts();
   c.updatedAt = Date.now();
   saveApp();
   navigate('dash', ROUTE.clientId);
