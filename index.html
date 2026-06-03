@@ -756,7 +756,7 @@ function renderEdit(container) {
         <span class="step-num">1</span> Corporate Identity
       </button>
       <button class="step-tab ${ROUTE.step==='data'?'active':c.monthly?'done':''}" onclick="setStep('data')">
-        <span class="step-num">2</span> Monatsdaten
+        <span class="step-num">2</span> Analysedaten
       </button>
       <button class="step-tab ${ROUTE.step==='posts'?'active':c.posts?.length?'done':''}" onclick="setStep('posts')">
         <span class="step-num">3</span> Top-Posts
@@ -830,7 +830,7 @@ function renderEdit(container) {
               ${c.monthly ? '✅ Daten geladen' : '📂 Noch keine Daten'}
             </div>
             <div style="font-size:12px;color:${c.monthly?'#00A86B':'#6E7A9F'};margin-top:2px" id="dataStatusSub">
-              ${c.monthly ? c.monthly.labels.length+' Monate: '+c.monthly.labels[0]+' – '+c.monthly.labels[c.monthly.labels.length-1] : 'Datei hochladen um zu starten'}
+              ${c.monthly ? c.monthly.labels.length+' Zeiträume: '+c.monthly.labels[0]+' – '+c.monthly.labels[c.monthly.labels.length-1] : 'Datei hochladen um zu starten'}
             </div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -875,10 +875,10 @@ function renderEdit(container) {
             </div>`).join('')}
         </div>
 
-        <!-- Monatsdaten Tabelle (nur wenn Daten vorhanden) -->
+        <!-- Analysedaten Tabelle (nur wenn Daten vorhanden) -->
         ${c.monthly ? `
         <div style="background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px">
-          <div style="padding:8px 14px;background:var(--bg);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Erkannte Monatsdaten</div>
+          <div style="padding:8px 14px;background:var(--bg);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Erkannte Analysedaten</div>
           <div style="max-height:220px;overflow-y:auto">
             <table style="width:100%;border-collapse:collapse;font-size:13px" id="previewTable">
               <thead><tr style="background:#F8F9FF;border-bottom:2px solid var(--border)">
@@ -1476,10 +1476,10 @@ let _pendingImport = null;
 function showImportPreview(d, mode, months, totalRows, autoPosts, mergeLabel) {
   _pendingImport = { d, autoPosts };
   const modeLabel = mode==='merged'
-    ? `<span style="color:var(--success);font-weight:600">✅ ${mergeLabel ? mergeLabel.split(' + ').length+' Dateien zusammengeführt' : 'Zusammengeführt'}</span> — ${totalRows} Zeilen → ${months} Monate`
+    ? `<span style="color:var(--success);font-weight:600">✅ ${mergeLabel ? mergeLabel.split(' + ').length+' Dateien zusammengeführt' : 'Zusammengeführt'}</span> — ${totalRows} Zeilen → ${months} Zeiträume`
     : mode==='post-level'
-    ? `<span style="color:var(--success);font-weight:600">✅ Post-Level erkannt</span> — ${totalRows} Einzelposts → ${months} Monate aggregiert`
-    : `<span style="color:var(--success);font-weight:600">✅ Monatsdaten erkannt</span> — ${months} Monate gefunden`;
+    ? `<span style="color:var(--success);font-weight:600">✅ Post-Level erkannt</span> — ${totalRows} Einzelposts → ${months} Zeiträume aggregiert`
+    : `<span style="color:var(--success);font-weight:600">✅ Analysedaten erkannt</span> — ${months} Zeiträume gefunden`;
 
   const rows = d.labels.map((l,i) => `
     <tr>
@@ -1527,7 +1527,7 @@ function showImportPreview(d, mode, months, totalRows, autoPosts, mergeLabel) {
 
   // Also update the ok banner
   const ok = document.getElementById('dataOk');
-  if (ok) { ok.textContent = `Vorschau: ${months} Monate erkannt — bitte bestätigen ↓`; ok.classList.add('show'); }
+  if (ok) { ok.textContent = `Vorschau: ${months} Zeiträume erkannt — bitte bestätigen ↓`; ok.classList.add('show'); }
 }
 
 function confirmImport() {
@@ -1559,7 +1559,7 @@ function confirmImport() {
   const sub   = document.getElementById('dataStatusSub');
   const banner= document.getElementById('dataStatusBanner');
   if (title) title.innerHTML = '✅ Daten gespeichert!';
-  if (sub)   sub.textContent = `${d.labels.length} Monate: ${d.labels[0]} – ${d.labels[d.labels.length-1]}`;
+  if (sub)   sub.textContent = `${d.labels.length} Zeiträume: ${d.labels[0]} – ${d.labels[d.labels.length-1]}`;
   if (banner) { banner.style.background='#E8F8F2'; banner.style.border='1px solid #00A86B'; }
 
   // Hide upload zone, show split section
@@ -1595,7 +1595,7 @@ function confirmImport() {
     banner?.appendChild(addBtn);
   }
 
-  showToast(`✅ ${d.labels.length} Monate importiert!`, 'ok');
+  showToast(`✅ ${d.labels.length} Zeiträume importiert!`, 'ok');
 }
 
 function refreshFileChips() {
@@ -1628,7 +1628,7 @@ function removeLoadedFile(idx) {
 function clearAllData() {
   const c = getClient(ROUTE.clientId);
   if (!c) return;
-  if (!confirm('Alle Daten für diesen Kunden löschen?\n\nDas betrifft: Monatsdaten, Top-Posts und die Dateiliste.\nCI-Einstellungen bleiben erhalten.')) return;
+  if (!confirm('Alle Daten für diesen Kunden löschen?\n\nDas betrifft: Analysedaten, Top-Posts und die Dateiliste.\nCI-Einstellungen bleiben erhalten.')) return;
   c.monthly = null;
   c.posts = [];
   c._loadedFiles = [];
@@ -1649,11 +1649,11 @@ function applyManualData() {
   c.monthly = d; c._manualMode = true; c.updatedAt = Date.now();
   saveApp();
   const ok = document.getElementById('dataOk');
-  if (ok) { ok.textContent = `✅ ${d.labels.length} Monate gespeichert`; ok.classList.add('show'); }
+  if (ok) { ok.textContent = `✅ ${d.labels.length} Zeiträume gespeichert`; ok.classList.add('show'); }
   const ss = document.getElementById('splitSection');
   if (ss) ss.style.display = '';
   updateSplitSelect(d.labels, c.splitLabel||'');
-  showToast(`${d.labels.length} Monate gespeichert`, 'ok');
+  showToast(`${d.labels.length} Zeiträume gespeichert`, 'ok');
 }
 function updateSplitSelect(labels, current) {
   const sel = document.getElementById('splitSel');
@@ -2130,7 +2130,7 @@ function downloadTemplate(type) {
   }
   const ws = XLSX.utils.aoa_to_sheet(rows);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, type==='post'?'Post-Level':'Monatsdaten');
+  XLSX.utils.book_append_sheet(wb, ws, type==='post'?'Post-Level':'Analysedaten');
   XLSX.writeFile(wb, filename);
   showToast('Vorlage heruntergeladen', 'ok');
 }
