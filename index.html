@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-23 -->
+<!-- v20260603-24 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: fetch latest version silently, reload if newer
 (function(){
-  const MY_V = 'v20260603-23';
+  const MY_V = 'v20260603-24';
   if (sessionStorage.getItem('_lv') === MY_V) return; // already checked this session
   sessionStorage.setItem('_lv', MY_V);
   fetch(location.pathname + '?_t=' + Date.now(), {cache:'no-store'})
@@ -1381,7 +1381,7 @@ function smartImport_collect(data, type, filename) {
       const wb = XLSX.read(data, { type:'array', cellDates:false, raw:false });
       console.log('[Upload] Sheets:', wb.SheetNames.join(', '));
       // ── LinkedIn AggregateAnalytics format detection (ENGAGEMENT, TOP POSTS, FOLLOWERS sheets)
-      const liSheets = ['ENGAGEMENT','TOP POSTS','FOLLOWERS','DISCOVERY'];
+      const liSheets = ['ENGAGEMENT','TOP POSTS','FOLLOWERS','DISCOVERY','TOP-BEITRÄGE','FOLLOWER_INNEN','AUFFINDBARKEIT','DEMOGRAFISCHE DATEN'];
       if (wb.SheetNames.some(n => liSheets.includes(n))) {
         console.log('[Upload] LinkedIn AggregateAnalytics format detected');
         const result = parseLinkedInAggregateAnalytics(wb);
@@ -1429,11 +1429,13 @@ function extractCaptionFromUrl(url) {
   } catch(e) { return ''; }
 }
 
-// ── LinkedIn AggregateAnalytics Excel parser (ENGAGEMENT + TOP POSTS + FOLLOWERS sheets)
+// ── LinkedIn AggregateAnalytics Excel parser (EN + DE sheet names)
 function parseLinkedInAggregateAnalytics(wb) {
-  const engWs  = wb.Sheets['ENGAGEMENT'];
-  const topWs  = wb.Sheets['TOP POSTS'];
-  const follWs = wb.Sheets['FOLLOWERS'];
+  // Support English and German LinkedIn export sheet names
+  const ws = n => wb.Sheets[n];
+  const engWs  = ws('ENGAGEMENT');
+  const topWs  = ws('TOP POSTS') || ws('TOP-BEITRÄGE') || ws('TOP BEITRÄGE');
+  const follWs = ws('FOLLOWERS') || ws('FOLLOWER_INNEN') || ws('FOLLOWER:INNEN');
   if (!engWs) return null;
 
   const engRows = XLSX.utils.sheet_to_json(engWs, {header:1, defval:'', raw:false});
@@ -1479,7 +1481,7 @@ function parseLinkedInAggregateAnalytics(wb) {
       const row = follRows[i];
       for (let j = 0; j < row.length; j++) {
         const lbl = String(row[j]||'').toLowerCase();
-        if (lbl.includes('total') || lbl.includes('gesamt') || lbl.includes('follower')) {
+        if (lbl.includes('total') || lbl.includes('gesamt') || lbl.includes('follower') || lbl.includes('follower:innen')) {
           const val = parseNum(row[j+1]);
           if (val > 0) { totalFollowers = val; break; }
         }
