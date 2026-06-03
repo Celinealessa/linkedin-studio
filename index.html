@@ -934,7 +934,11 @@ function renderEdit(container) {
               <th class="t-left" style="min-width:200px">Caption / Zitat</th>
               <th class="t-left" style="min-width:130px">Label (Titel · Datum)</th>
               <th style="min-width:90px">Impressionen</th>
-              <th style="min-width:80px">Kommentare</th>
+              <th style="min-width:70px">Likes</th>
+              <th style="min-width:70px">Kommentare</th>
+              <th style="min-width:70px">Shares</th>
+              <th style="min-width:80px">Engagement</th>
+              <th class="t-left" style="min-width:130px">URL</th>
               <th style="min-width:140px">Content-Typ</th>
               <th></th>
             </tr></thead>
@@ -1695,7 +1699,7 @@ const TYPE_META = {
 };
 const TYPE_OPTS = Object.entries(TYPE_META).map(([v,m])=>`<option value="${v}">${m.label}</option>`).join('');
 let _pRowId = 0;
-function addPostRow(cap='', lbl='', impr='', comm='', type='story') {
+function addPostRow(cap='', lbl='', impr='', likes='', comm='', shares='', eng='', url='', type='story') {
   _pRowId++;
   const tbody = document.getElementById('postsBody');
   const tr = document.createElement('tr');
@@ -1704,7 +1708,11 @@ function addPostRow(cap='', lbl='', impr='', comm='', type='story') {
     <td class="t-left"><input value="${esc(cap)}" placeholder="Caption…" style="width:200px;text-align:left;font-family:'DM Sans',sans-serif"></td>
     <td class="t-left"><input value="${esc(lbl)}" placeholder="Titel · Monat Jahr" style="width:130px;text-align:left;font-family:'DM Sans',sans-serif"></td>
     <td><input type="number" value="${impr}" placeholder="0"></td>
+    <td><input type="number" value="${likes}" placeholder="0"></td>
     <td><input type="number" value="${comm}" placeholder="0"></td>
+    <td><input type="number" value="${shares}" placeholder="0"></td>
+    <td><input type="number" value="${eng}" placeholder="0"></td>
+    <td class="t-left"><input value="${esc(url)}" placeholder="https://…" style="width:130px;text-align:left;font-family:'DM Sans',sans-serif"></td>
     <td><select style="width:140px;padding:4px 7px;border:1px solid var(--border);border-radius:5px;font-size:12px;font-family:'DM Sans',sans-serif;background:#fff">${opts}</select></td>
     <td><button class="del-btn" onclick="this.closest('tr').remove()">✕</button></td>`;
   tbody.appendChild(tr);
@@ -1713,7 +1721,7 @@ function restorePostsRows(posts) {
   const tbody = document.getElementById('postsBody');
   if (!tbody) return;
   tbody.innerHTML = ''; _pRowId = 0;
-  posts.forEach(p => addPostRow(p.caption, p.label, p.impr, p.comments, p.type));
+  posts.forEach(p => addPostRow(p.caption, p.label, p.impr, p.likes||0, p.comments||0, p.shares||0, p.eng||0, p.url||'', p.type));
 }
 function readPosts() {
   return [...document.querySelectorAll('#postsBody tr')].map(tr => {
@@ -1721,7 +1729,7 @@ function readPosts() {
     const sel = tr.querySelector('select');
     const cap = inp[0]?.value.trim();
     if (!cap) return null;
-    return { caption:cap, label:inp[1]?.value.trim(), impr:toN(inp[2]?.value), comments:toN(inp[3]?.value), type:sel?.value||'story' };
+    return { caption:cap, label:inp[1]?.value.trim(), impr:toN(inp[2]?.value), likes:toN(inp[3]?.value), comments:toN(inp[4]?.value), shares:toN(inp[5]?.value), eng:toN(inp[6]?.value), url:inp[7]?.value.trim(), type:sel?.value||'story' };
   }).filter(Boolean).sort((a,b)=>b.impr-a.impr);
 }
 function savePostsAndDash() {
