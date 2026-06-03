@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-16 -->
+<!-- v20260603-17 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: fetch latest version silently, reload if newer
 (function(){
-  const MY_V = 'v20260603-16';
+  const MY_V = 'v20260603-17';
   if (sessionStorage.getItem('_lv') === MY_V) return; // already checked this session
   sessionStorage.setItem('_lv', MY_V);
   fetch(location.pathname + '?_t=' + Date.now(), {cache:'no-store'})
@@ -633,7 +633,13 @@ const APP = loadApp();
     {caption:'25 Jahre PAYBACK – Wir sind 2025 25 Jahre alt geworden.',label:'25 Jahre PAYBACK · Dez 2025',impr:16209,likes:0,comments:10,shares:0,eng:277,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_25-jahre-payback-wir-sind-2025-25-jahre-share-7401244451303661569-IM2H',type:'story'},
     {caption:'„Wir verkaufen Schallplatten noch wie früher und machen Streaming gleich dazu."',label:'Schallplatten · Sep 2025',impr:14382,likes:0,comments:0,shares:0,eng:231,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_wir-verkaufen-schallplatten-noch-wie-fr%C3%BCher-share-7370744728075726849-Fivf',type:'story'}
   ];
-  const paybackFlopPosts = []; // populated automatically on Excel upload
+  const paybackFlopPosts = [
+    {caption:'„Wir verkaufen Schallplatten noch wie früher und machen Streaming gleich dazu."',label:'Schallplatten · Sep 2025',impr:14382,likes:0,comments:0,shares:0,eng:231,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_wir-verkaufen-schallplatten-noch-wie-fr%C3%BCher-share-7370744728075726849-Fivf',type:'story'},
+    {caption:'25 Jahre PAYBACK – Wir sind 2025 25 Jahre alt geworden.',label:'25 Jahre PAYBACK · Dez 2025',impr:16209,likes:0,comments:10,shares:0,eng:277,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_25-jahre-payback-wir-sind-2025-25-jahre-share-7401244451303661569-IM2H',type:'story'},
+    {caption:'Über ein Jahr MILES und PAYBACK. Freitag saßen Oliver Mackprang und ich wieder zusammen.',label:'MILES & PAYBACK · Feb 2026',impr:16835,likes:0,comments:16,shares:0,eng:198,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_%C3%BCber-ein-jahrmiles-und-payback-freitag-share-7419049588868939776-GlZH',type:'story'},
+    {caption:'Was sind Deutschlands TOP 3 B2C-Onlineshops? Amazon, eBay, Otto…',label:'TOP 3 Onlineshops · Feb 2026',impr:18188,likes:0,comments:9,shares:0,eng:99,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_was-sind-deutschlands-top-3-b2c-onlineshops-share-7425078171814760449-D1Fg',type:'branch'},
+    {caption:'„Ich bin jetzt seit über 14 Jahren bei PAYBACK, länger als ich je zuvor bei einem Unternehmen war."',label:'14 Jahre PAYBACK · Okt 2025',impr:19457,likes:0,comments:0,shares:0,eng:335,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_ich-bin-jetzt-seit-%C3%BCber-14-jahren-bei-payback-share-7383399927130787840-kwLT',type:'story'},
+  ];
   if (!APP.clients) APP.clients = [];
   // Finde oder erstelle PAYBACK Client — überschreibe immer monthly+posts (Daten sollen aktuell sein)
   let idx = APP.clients.findIndex(c => c.id === 'payback2025');
@@ -645,7 +651,7 @@ const APP = loadApp();
     ci: { client:'PAYBACK', person:'Dominik Dommick', period:'Jun 2025 – Jun 2026', primary:'#003087', accent:'#FFD100', logo:'P', logoImg:'', agency:'Branding People GmbH', ...(base.ci||{}) },
     monthly: paybackMonthly,
     posts: (base.posts && base.posts.length > 0) ? base.posts : paybackPosts,
-    flopPosts: (base.flopPosts && base.flopPosts.length > 0) ? base.flopPosts : paybackFlopPosts,
+    flopPosts: paybackFlopPosts,
     splitLabel: base.splitLabel || 'Sep 25',
     _loadedFiles: ['AggregateAnalytics_Dominik Dommick_2025-06-04_2026-06-03.xlsx'],
     updatedAt: Date.now()
