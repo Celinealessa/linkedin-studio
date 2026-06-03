@@ -1109,6 +1109,7 @@ function isFullDate(val) {
   if (/^\d{1,2}[./]\d{1,2}[./]\d{4}/.test(s)) return true; // DE 15.01.2025
   if (/^[A-Za-z]{3,}\s+\d{1,2},?\s+\d{4}/.test(s)) return true; // Jan 15, 2025
   if (/^\d{5}$/.test(s)) return true;                       // Excel serial
+  if (/^\d{1,2}\s+[A-Za-z]{3,}\s+\d{2,4}$/.test(s)) return true; // Favikon "16 Dec 25"
   return false;
 }
 
@@ -1158,6 +1159,10 @@ function parseDate(val) {
   // LinkedIn DE monthly: "Jan. 2025" or "Januar 2025"
   const liMon = s.match(/^([A-Za-zÄäÖöÜüß]+)\.?\s+(\d{4})/);
   if (liMon) { const mi = miFromStr(liMon[1]); if(mi>=0) return {year:+liMon[2], month:mi}; }
+
+  // Favikon: "16 Dec 25" or "16 Dec 2025" (DD Mon YY/YYYY)
+  const fav = s.match(/^(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{2,4})$/);
+  if (fav) { const mi = miFromStr(fav[2]); if(mi>=0) { const yr = fav[3].length===2 ? 2000+parseInt(fav[3]) : +fav[3]; return {year:yr, month:mi}; } }
 
   // Short: "Jan 25" "Feb. 26"
   const short = s.match(/^([A-Za-zÄäÖöÜüß]+)\.?\s+(\d{2})$/);
@@ -1255,7 +1260,7 @@ function smartImport_parse(rows) {
   let headerIdx = 0;
   for (let i = 0; i < Math.min(6, rows.length); i++) {
     const joined = rows[i].map(c=>String(c||'')).join(' ').toLowerCase();
-    if (/datum|date|monat|month|impressi|erstellt|veröffent|published|created|beitrags|post/i.test(joined)) {
+    if (/datum|date|monat|month|impressi|erstellt|veröffent|published|created|beitrags|post|likecount|caption|username|network/i.test(joined)) {
       headerIdx = i; break;
     }
   }
@@ -1264,17 +1269,18 @@ function smartImport_parse(rows) {
   // 2. Detect columns
   const ci = {
     date:        findCol(header, ['datum','veröffentlichungsdatum','date','erstellt','published','created','monat','month','zeit']),
-    impressions: findCol(header, ['impression','reichweite','views','aufrufe','sichtbarkeit','mitglieder erreicht','erreicht']),
-    likes:       findCol(header, ['reaktion','like','gefällt mir','gefällt','reaction']),
-    comments:    findCol(header, ['kommentar','comment']),
-    shares:      findCol(header, ['weiterleit','share','repost','geteilt']),
+    impressions: findCol(header, ['impression','reichweite','views','aufrufe','sichtbarkeit','mitglieder erreicht','erreicht','viewcount']),
+    likes:       findCol(header, ['reaktion','like','gefällt mir','gefällt','reaction','likecount']),
+    comments:    findCol(header, ['kommentar','comment','commentcount']),
+    shares:      findCol(header, ['weiterleit','share','repost','geteilt','sharecount']),
     clicks:      findCol(header, ['klick','click']),
     followers:   findCol(header, ['neue follower','new follower','follower','abonnent','follower-zuwachs']),
-    engagements: findCol(header, ['interaktion','engagement','gesamt-engagement']),
-    engRate:     findCol(header, ['interaktionsrate','engagement rate','engagementrate']),
+    engagements: findCol(header, ['interaktion','engagement','gesamt-engagement','engagementcount']),
+    engRate:     findCol(header, ['interaktionsrate','engagement rate','engagementrate','engagementrate']),
     postsCount:  findCol(header, ['anzahl','post count','beitragsanzahl']),
     caption:     findCol(header, ['beitragstext','beitragstitel','caption','text','inhalt','title','beschreibung','post-text','beitrag','post text','nachricht','message']),
-    url:         findCol(header, ['url','link','beitrags-url']),
+    url:         findCol(header, ['mediaurl','url','link','beitrags-url']),
+    network:     findCol(header, ['network','platform','netzwerk']),
   };
   if (ci.date < 0) ci.date = 0;
 
@@ -1296,6 +1302,11 @@ function smartImport_parse(rows) {
 function importPostLevel_parse(dataRows, ci) {
   const monthMap = new Map();
   dataRows.forEach(row => {
+    // Favikon: filter to LinkedIn only if network column exists
+    if (ci.network>=0) {
+      const net = String(row[ci.network]||'').toLowerCase().trim();
+      if (net && net !== 'linkedin') return; // skip non-LinkedIn rows
+    }
     const parsed = parseDate(row[ci.date]);
     if (!parsed) return;
     const key = `${parsed.year}-${String(parsed.month+1).padStart(2,'0')}`;
