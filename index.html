@@ -1,0 +1,1512 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LinkedIn Dashboard · Branding People</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+/* ══════════════════════════════════════════
+   TOKENS & RESET
+══════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --app-blue:    #1A1F36;
+  --app-blue2:   #2D3561;
+  --app-accent:  #5B63FE;
+  --app-accent2: #4048E8;
+  --app-yellow:  #FFD100;
+  --bg:          #F0F2F9;
+  --surface:     #FFFFFF;
+  --text:        #1A1F36;
+  --muted:       #6E7A9F;
+  --border:      #E3E8F4;
+  --success:     #00A86B;
+  --danger:      #E03B3B;
+  --warn:        #F59E0B;
+  --radius:      12px;
+  --radius-sm:   8px;
+  --shadow:      0 2px 16px rgba(26,31,54,0.08);
+  --shadow-md:   0 8px 32px rgba(26,31,54,0.12);
+  --sidebar-w:   240px;
+}
+
+html { font-size: 15px; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg); color: var(--text);
+  min-height: 100vh; overflow-x: hidden;
+}
+
+/* ══════════════════════════════════════════
+   APP SHELL
+══════════════════════════════════════════ */
+.app-shell {
+  display: flex; min-height: 100vh;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  width: var(--sidebar-w); flex-shrink: 0;
+  background: var(--app-blue);
+  display: flex; flex-direction: column;
+  position: fixed; left: 0; top: 0; bottom: 0;
+  overflow-y: auto; z-index: 50;
+  transition: transform 0.25s;
+}
+.sidebar-brand {
+  padding: 20px 16px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.sidebar-logo {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 4px;
+}
+.sidebar-logo-mark {
+  width: 32px; height: 32px; background: var(--app-accent);
+  border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+}
+.sidebar-app-name {
+  font-size: 13px; font-weight: 600; color: #fff;
+  letter-spacing: 0.01em;
+}
+.sidebar-tagline {
+  font-size: 10px; color: rgba(255,255,255,0.35);
+  font-family: 'DM Mono', monospace;
+}
+
+.sidebar-nav { padding: 12px 8px; flex: 1; }
+.sidebar-section-label {
+  font-size: 9px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.12em; color: rgba(255,255,255,0.3);
+  padding: 8px 8px 4px;
+}
+.sidebar-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: 8px;
+  font-size: 13px; color: rgba(255,255,255,0.6);
+  cursor: pointer; transition: all 0.15s;
+  margin-bottom: 2px;
+  border: none; background: none; width: 100%;
+  font-family: 'DM Sans', sans-serif; text-align: left;
+}
+.sidebar-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+.sidebar-item.active { background: var(--app-accent); color: #fff; }
+.sidebar-item .si-icon { width: 18px; text-align: center; font-size: 14px; flex-shrink: 0; }
+.sidebar-item .si-badge {
+  margin-left: auto; background: rgba(255,255,255,0.15);
+  font-size: 10px; padding: 2px 7px; border-radius: 20px;
+}
+
+.sidebar-add-btn {
+  margin: 8px; padding: 10px;
+  background: rgba(91,99,254,0.2); border: 1px dashed rgba(91,99,254,0.5);
+  border-radius: 8px; color: #8B93FF;
+  font-size: 12px; font-weight: 500; font-family: 'DM Sans', sans-serif;
+  cursor: pointer; transition: all 0.15s; width: calc(100% - 16px);
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.sidebar-add-btn:hover { background: rgba(91,99,254,0.35); color: #fff; }
+
+.sidebar-footer {
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  font-size: 11px; color: rgba(255,255,255,0.25);
+}
+
+/* ── Main Content ── */
+.main {
+  margin-left: var(--sidebar-w);
+  flex: 1; min-height: 100vh;
+  display: flex; flex-direction: column;
+}
+.topbar {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 2rem; height: 56px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 40;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+}
+.breadcrumb {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--muted);
+}
+.breadcrumb-sep { opacity: 0.4; }
+.breadcrumb .current { color: var(--text); font-weight: 500; }
+.topbar-actions { display: flex; align-items: center; gap: 8px; }
+
+.content { flex: 1; padding: 2rem; max-width: 1200px; width: 100%; }
+
+/* ══════════════════════════════════════════
+   BUTTONS & INPUTS
+══════════════════════════════════════════ */
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 16px; border-radius: 8px;
+  font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif;
+  cursor: pointer; border: 1px solid var(--border); background: var(--bg);
+  color: var(--text); transition: all 0.15s; white-space: nowrap;
+}
+.btn:hover { background: var(--border); }
+.btn-primary { background: var(--app-accent); border-color: var(--app-accent); color: #fff; box-shadow: 0 2px 8px rgba(91,99,254,0.3); }
+.btn-primary:hover { background: var(--app-accent2); border-color: var(--app-accent2); }
+.btn-danger { color: var(--danger); border-color: #FFCECE; background: #FFF5F5; }
+.btn-danger:hover { background: #FFE5E5; }
+.btn-sm { padding: 5px 11px; font-size: 12px; border-radius: 6px; }
+.btn-ghost { background: transparent; border-color: transparent; }
+.btn-ghost:hover { background: var(--bg); border-color: var(--border); }
+
+.form-group { margin-bottom: 14px; }
+.form-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 5px; display: block; }
+.form-input {
+  width: 100%; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 8px;
+  font-size: 13px; font-family: 'DM Sans', sans-serif; color: var(--text);
+  background: #fff; transition: border-color 0.15s;
+}
+.form-input:focus { outline: none; border-color: var(--app-accent); box-shadow: 0 0 0 3px rgba(91,99,254,0.1); }
+.form-input[type=color] { padding: 3px 5px; height: 38px; cursor: pointer; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+/* ══════════════════════════════════════════
+   HOME SCREEN
+══════════════════════════════════════════ */
+.home-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+.home-title { font-size: 22px; font-weight: 600; }
+.home-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+.clients-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.client-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 1.25rem;
+  box-shadow: var(--shadow); cursor: pointer;
+  transition: all 0.2s; position: relative; overflow: hidden;
+}
+.client-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--app-accent); }
+.client-card-stripe { position: absolute; top: 0; left: 0; right: 0; height: 4px; }
+.client-card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.client-card-logo {
+  width: 44px; height: 44px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 700; flex-shrink: 0; overflow: hidden;
+}
+.client-card-logo img { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; }
+.client-card-name { font-size: 15px; font-weight: 600; }
+.client-card-period { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.client-card-kpis { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
+.client-kpi { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+.client-kpi-val { font-size: 16px; font-weight: 600; }
+.client-kpi-label { font-size: 10px; color: var(--muted); margin-top: 1px; }
+.client-card-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 12px; padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--muted);
+}
+.client-status {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600;
+}
+.status-ready  { background: #E8F8F2; color: #00624A; }
+.status-draft  { background: #FFF9D6; color: #7A5C00; }
+.status-empty  { background: var(--bg); color: var(--muted); }
+
+.new-client-card {
+  background: transparent; border: 2px dashed var(--border);
+  border-radius: var(--radius); padding: 2rem;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.2s; min-height: 200px;
+  color: var(--muted);
+}
+.new-client-card:hover { border-color: var(--app-accent); color: var(--app-accent); background: rgba(91,99,254,0.03); }
+.new-client-icon { font-size: 28px; margin-bottom: 8px; }
+.new-client-label { font-size: 13px; font-weight: 500; }
+
+.empty-state {
+  text-align: center; padding: 4rem 2rem;
+  display: flex; flex-direction: column; align-items: center;
+}
+.empty-icon { font-size: 48px; margin-bottom: 16px; }
+.empty-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+.empty-sub { font-size: 14px; color: var(--muted); margin-bottom: 20px; }
+
+/* ══════════════════════════════════════════
+   EDIT SCREEN
+══════════════════════════════════════════ */
+.edit-header {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 1.5rem;
+}
+.edit-logo-preview {
+  width: 48px; height: 48px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 700; overflow: hidden; flex-shrink: 0;
+}
+.edit-logo-preview img { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; }
+.edit-client-name { font-size: 20px; font-weight: 600; }
+.edit-client-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+.step-tabs {
+  display: flex; gap: 4px; margin-bottom: 1.5rem;
+  background: var(--bg); padding: 4px; border-radius: 10px;
+  width: fit-content;
+}
+.step-tab {
+  padding: 8px 18px; border-radius: 7px; border: none;
+  font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif;
+  cursor: pointer; color: var(--muted); background: none; transition: all 0.15s;
+  display: flex; align-items: center; gap: 6px;
+}
+.step-tab.active { background: #fff; color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+.step-tab .step-num { width: 18px; height: 18px; border-radius: 50%; background: var(--border); font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.step-tab.active .step-num { background: var(--app-accent); color: #fff; }
+.step-tab.done .step-num { background: var(--success); color: #fff; }
+
+.edit-section {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 1.5rem;
+  box-shadow: var(--shadow); margin-bottom: 1rem;
+}
+.edit-section-title {
+  font-size: 13px; font-weight: 600; margin-bottom: 1rem;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+
+/* CI color preview bar */
+.ci-bar {
+  height: 40px; border-radius: 8px;
+  display: flex; align-items: center; padding: 0 14px; gap: 10px;
+  font-size: 13px; font-weight: 500; margin-top: 10px;
+  transition: all 0.2s;
+}
+
+/* Upload zone */
+.upload-zone {
+  border: 2px dashed var(--border); border-radius: 10px;
+  padding: 1.5rem 1rem; text-align: center; cursor: pointer; transition: all 0.2s;
+}
+.upload-zone:hover, .upload-zone.drag { border-color: var(--app-accent); background: rgba(91,99,254,0.03); }
+.upload-icon { font-size: 26px; margin-bottom: 6px; }
+.upload-title { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.upload-sub { font-size: 11px; color: var(--muted); }
+
+.data-ok { display: none; align-items: center; gap: 8px; font-size: 12px; color: var(--success); font-weight: 500; padding: 8px 12px; background: #E8F8F2; border-radius: 8px; margin-bottom: 10px; }
+.data-ok.show { display: flex; }
+
+/* Data table */
+.dt-wrap { overflow-x: auto; margin-top: 8px; }
+.dt { width: 100%; border-collapse: collapse; font-size: 12px; }
+.dt th { padding: 6px 8px; text-align: left; background: var(--bg); color: var(--muted); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; border-bottom: 2px solid var(--border); white-space: nowrap; }
+.dt td { padding: 3px 5px; border-bottom: 1px solid var(--border); }
+.dt tr:last-child td { border-bottom: none; }
+.dt input, .dt select {
+  width: 100%; padding: 4px 7px; border: 1px solid var(--border); border-radius: 5px;
+  font-size: 12px; font-family: 'DM Mono', monospace; color: var(--text); background: #fff;
+  text-align: right;
+}
+.dt input:focus, .dt select:focus { outline: none; border-color: var(--app-accent); }
+.dt .t-left input, .dt .t-left { text-align: left; }
+.dt .t-left input { text-align: left; font-family: 'DM Sans', sans-serif; }
+.dt .del-btn { width: 24px; height: 24px; border: none; background: none; cursor: pointer; color: var(--muted); font-size: 14px; border-radius: 4px; }
+.dt .del-btn:hover { background: #FFE5E5; color: var(--danger); }
+.add-row { font-size: 12px; color: var(--app-accent); cursor: pointer; padding: 6px 2px; display: inline-flex; align-items: center; gap: 4px; font-weight: 500; }
+.add-row:hover { text-decoration: underline; }
+
+.type-sel option { font-family: 'DM Sans', sans-serif; }
+
+/* ══════════════════════════════════════════
+   DASHBOARD
+══════════════════════════════════════════ */
+.dash-topbar {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  height: 52px; display: flex; align-items: center;
+  padding: 0 2rem; gap: 8px; position: sticky; top: 56px; z-index: 39;
+}
+.dash-header {
+  height: 64px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 2rem; position: sticky; top: 0; z-index: 41;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.15);
+}
+.dh-logo { display: flex; align-items: center; gap: 12px; }
+.dh-logomark {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; overflow: hidden; flex-shrink: 0;
+}
+.dh-logomark img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.dh-name { font-size: 15px; font-weight: 600; color: #fff; }
+.dh-period { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 1px; }
+.dh-badge { font-size: 11px; font-weight: 500; padding: 4px 12px; border-radius: 20px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.8); }
+
+.dash-content { padding: 1.5rem 2rem 4rem; max-width: 1200px; }
+.section-hd { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.section-lbl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); white-space: nowrap; }
+.section-line { flex: 1; height: 1px; background: var(--border); }
+
+/* Hero */
+.hero { border-radius: var(--radius); padding: 1.75rem 2rem; margin-bottom: 1.5rem; position: relative; overflow: hidden; }
+.hero::before { content:''; position:absolute; top:-50px; right:-50px; width:250px; height:250px; background:rgba(255,255,255,0.06); border-radius:50%; }
+.hero-inner { position:relative; z-index:1; display:flex; align-items:center; justify-content:space-between; gap:2rem; flex-wrap:wrap; }
+.hero-title { font-size: 22px; font-weight: 600; color: #fff; line-height: 1.2; }
+.hero-sub { font-size: 13px; color: rgba(255,255,255,0.5); margin-top: 4px; }
+.hero-kpis { display: flex; gap: 2rem; flex-wrap: wrap; }
+.hero-kpi-val { font-size: 28px; font-weight: 600; line-height: 1; }
+.hero-kpi-lbl { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* KPI cards */
+.kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 1.5rem; }
+.kpi-card { background:#fff; border:1px solid var(--border); border-radius:var(--radius); padding:1.2rem 1.2rem 1rem; box-shadow:var(--shadow); position:relative; overflow:hidden; }
+.kpi-card::after { content:''; position:absolute; bottom:0; left:0; right:0; height:3px; background:var(--k-accent,#5B63FE); border-radius:0 0 var(--radius) var(--radius); }
+.kpi-lbl { font-size:11px; font-weight:500; color:var(--muted); text-transform:uppercase; letter-spacing:0.07em; margin-bottom:8px; }
+.kpi-val { font-size:26px; font-weight:600; line-height:1; }
+.kpi-sub { font-size:11px; color:var(--muted); margin-top:6px; }
+.txt-g { color:var(--success); } .txt-r { color:var(--danger); } .txt-o { color:var(--warn); }
+
+/* Chart cards */
+.chart-card { background:#fff; border:1px solid var(--border); border-radius:var(--radius); padding:1.5rem; box-shadow:var(--shadow); }
+.chart-title { font-size:13px; font-weight:600; margin-bottom:3px; }
+.chart-sub { font-size:11px; color:var(--muted); margin-bottom:14px; }
+.chart-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:1.25rem; }
+.chart-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:1.25rem; }
+.legend { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+.legend-item { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); }
+.legend-dot { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+
+/* Split banner */
+.split { display:grid; grid-template-columns:1fr auto 1fr; background:#fff; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow); margin-bottom:1.25rem; }
+.split-side { padding:1.25rem 1.5rem; }
+.split-before { background:#FFF5F5; }
+.split-after  { background:#F0FBF7; }
+.split-div { width:40px; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:700; }
+.split-lbl { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:10px; }
+.split-before .split-lbl { color:var(--danger); }
+.split-after  .split-lbl { color:var(--success); }
+.split-rows { display:flex; flex-direction:column; gap:8px; }
+.split-row { display:flex; justify-content:space-between; font-size:13px; align-items:center; }
+.split-row-lbl { color:var(--muted); }
+.split-before .split-row-val { color:var(--danger); font-weight:600; font-size:15px; }
+.split-after  .split-row-val { color:var(--success); font-weight:600; font-size:15px; }
+
+/* Posts */
+.posts-list { display:flex; flex-direction:column; gap:7px; }
+.post-row { display:grid; grid-template-columns:28px 1fr auto auto; gap:10px; align-items:center; padding:9px 12px; background:var(--bg); border-radius:var(--radius-sm); border:1px solid transparent; transition:all 0.15s; }
+.post-row:hover { background:#EEF1FF; border-color:#C5C9F8; }
+.post-rank { font-size:12px; font-weight:600; color:var(--muted); font-family:'DM Mono',monospace; text-align:center; }
+.post-rank.g{color:#C89500;} .post-rank.s{color:#7A8BA0;} .post-rank.b{color:#A0674A;}
+.post-cap { font-size:13px; line-height:1.4; }
+.post-meta { font-size:10px; color:var(--muted); font-family:'DM Mono',monospace; margin-top:2px; }
+.post-pill { font-size:10px; font-weight:600; padding:2px 8px; border-radius:20px; white-space:nowrap; }
+.post-impr { font-size:14px; font-weight:600; font-family:'DM Mono',monospace; text-align:right; min-width:60px; }
+
+/* Insight cards */
+.insight-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:1.25rem; }
+.insight-card { background:#fff; border:1px solid var(--border); border-radius:var(--radius); padding:1.25rem; box-shadow:var(--shadow); position:relative; overflow:hidden; }
+.insight-stripe { position:absolute; top:0; left:0; right:0; height:4px; }
+.insight-badge { display:inline-block; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; padding:3px 9px; border-radius:20px; margin-bottom:8px; }
+.insight-val { font-size:20px; font-weight:600; margin-bottom:2px; }
+.insight-title { font-size:13px; font-weight:600; margin-bottom:6px; }
+.insight-body { font-size:12px; color:var(--muted); line-height:1.6; margin-bottom:8px; }
+.insight-rec { font-size:12px; font-weight:500; }
+
+/* ══════════════════════════════════════════
+   MODAL
+══════════════════════════════════════════ */
+.overlay { display:none; position:fixed; inset:0; z-index:200; background:rgba(26,31,54,0.5); align-items:center; justify-content:center; backdrop-filter:blur(3px); }
+.overlay.open { display:flex; }
+.modal { background:#fff; border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,0.2); width:90%; max-width:480px; overflow:hidden; }
+.modal-h { padding:1.25rem 1.5rem; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+.modal-h h3 { font-size:15px; font-weight:600; }
+.modal-x { width:28px; height:28px; border:none; background:var(--bg); border-radius:6px; cursor:pointer; font-size:15px; color:var(--muted); display:flex; align-items:center; justify-content:center; }
+.modal-x:hover { background:#FFE5E5; color:var(--danger); }
+.modal-b { padding:1.5rem; }
+.modal-f { padding:1rem 1.5rem; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end; }
+
+/* ══════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════ */
+.toast { position:fixed; bottom:24px; right:24px; z-index:9999; background:var(--app-blue); color:#fff; padding:10px 18px; border-radius:9px; font-size:13px; font-weight:500; box-shadow:0 4px 20px rgba(0,0,0,0.2); transform:translateY(80px); opacity:0; transition:all 0.3s; pointer-events:none; }
+.toast.show { transform:translateY(0); opacity:1; }
+.toast.ok { background:var(--success); }
+.toast.warn { background:var(--warn); }
+
+/* ══════════════════════════════════════════
+   PRINT
+══════════════════════════════════════════ */
+@media print {
+  .sidebar, .topbar, .dash-topbar, .toast, .overlay { display:none !important; }
+  .main { margin-left:0 !important; }
+  .dash-header { position:relative !important; top:0 !important; }
+}
+
+/* ══════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════ */
+@media(max-width:900px) {
+  :root { --sidebar-w: 0px; }
+  .sidebar { transform: translateX(-240px); width: 240px; }
+  .sidebar.open { transform: translateX(0); }
+  .kpi-grid { grid-template-columns: repeat(2,1fr); }
+  .chart-2, .chart-3, .insight-grid { grid-template-columns: 1fr; }
+  .split { grid-template-columns: 1fr; }
+  .split-div { height: 32px; width: auto; }
+  .post-row { grid-template-columns: 28px 1fr auto; }
+  .post-pill { display: none; }
+  .clients-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="toast" id="toast"></div>
+
+<!-- ══════════════════════════════════════════
+     APP SHELL
+══════════════════════════════════════════ -->
+<div class="app-shell">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-logo">
+        <div class="sidebar-logo-mark">📊</div>
+        <div>
+          <div class="sidebar-app-name">LinkedIn Studio</div>
+        </div>
+      </div>
+      <div class="sidebar-tagline">by Branding People</div>
+    </div>
+
+    <div class="sidebar-nav">
+      <div class="sidebar-section-label">Navigation</div>
+      <button class="sidebar-item active" id="nav-home" onclick="navigate('home')">
+        <span class="si-icon">🏠</span> Übersicht
+      </button>
+
+      <div class="sidebar-section-label" style="margin-top:12px">Kunden</div>
+      <div id="sidebarClients"></div>
+    </div>
+
+    <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
+
+    <div class="sidebar-footer">LinkedIn Dashboard Studio v1.0</div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main" id="main">
+
+    <!-- TOP BAR -->
+    <div class="topbar" id="topbar">
+      <div class="breadcrumb" id="breadcrumb">
+        <span class="current">Übersicht</span>
+      </div>
+      <div class="topbar-actions" id="topbarActions"></div>
+    </div>
+
+    <!-- CONTENT AREA -->
+    <div id="viewContainer"></div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     CONFIRM DELETE MODAL
+══════════════════════════════════════════ -->
+<div class="overlay" id="deleteModal">
+  <div class="modal">
+    <div class="modal-h">
+      <h3>🗑️ Kunden löschen</h3>
+      <button class="modal-x" onclick="closeModal('deleteModal')">✕</button>
+    </div>
+    <div class="modal-b">
+      <p style="font-size:14px;color:var(--muted)">Möchtest du <strong id="deleteClientName" style="color:var(--text)"></strong> wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.</p>
+    </div>
+    <div class="modal-f">
+      <button class="btn" onclick="closeModal('deleteModal')">Abbrechen</button>
+      <button class="btn btn-danger" id="confirmDeleteBtn">🗑️ Löschen</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ══════════════════════════════════════════
+//  STORAGE & STATE
+// ══════════════════════════════════════════
+const STORAGE_KEY = 'linkedin_studio_v2';
+
+function loadApp() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : { clients: [] };
+  } catch { return { clients: [] }; }
+}
+
+function saveApp() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(APP)); } catch(e) { showToast('Speichern fehlgeschlagen', 'warn'); }
+}
+
+const APP = loadApp();
+
+// ── Client model
+function newClient() {
+  return {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+    ci: { client:'', person:'', period:'', primary:'#1A1F36', accent:'#FFD100', logo:'', logoImg:'', agency:'Branding People GmbH' },
+    monthly: null,
+    splitLabel: '',
+    posts: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+}
+
+// ── Router state
+const ROUTE = { view: 'home', clientId: null, step: 'ci' };
+
+// ══════════════════════════════════════════
+//  NAVIGATION
+// ══════════════════════════════════════════
+function navigate(view, clientId, step) {
+  ROUTE.view = view;
+  ROUTE.clientId = clientId || null;
+  ROUTE.step = step || 'ci';
+  renderApp();
+}
+
+function renderApp() {
+  renderSidebar();
+  const vc = document.getElementById('viewContainer');
+  if (ROUTE.view === 'home') { renderHome(vc); updateTopbar('home'); }
+  else if (ROUTE.view === 'edit') { renderEdit(vc); updateTopbar('edit'); }
+  else if (ROUTE.view === 'dash') { renderDash(vc); updateTopbar('dash'); }
+}
+
+function updateTopbar(view) {
+  const bc = document.getElementById('breadcrumb');
+  const ta = document.getElementById('topbarActions');
+
+  if (view === 'home') {
+    bc.innerHTML = `<span class="current">Übersicht</span>`;
+    ta.innerHTML = `<button class="btn btn-primary btn-sm" onclick="createNewClient()">＋ Neuer Kunde</button>`;
+  } else if (view === 'edit') {
+    const c = getClient(ROUTE.clientId);
+    bc.innerHTML = `<span onclick="navigate('home')" style="cursor:pointer">Übersicht</span>
+      <span class="breadcrumb-sep">/</span>
+      <span class="current">${c?.ci.client || 'Neuer Kunde'}</span>
+      <span class="breadcrumb-sep">/</span>
+      <span style="color:var(--app-accent)">Bearbeiten</span>`;
+    const hasData = c?.monthly?.labels?.length > 0;
+    ta.innerHTML = `
+      ${hasData ? `<button class="btn btn-sm" onclick="navigate('dash','${ROUTE.clientId}')">Dashboard anzeigen</button>` : ''}
+      <button class="btn btn-danger btn-sm" onclick="askDeleteClient('${ROUTE.clientId}')">🗑️</button>`;
+  } else if (view === 'dash') {
+    const c = getClient(ROUTE.clientId);
+    bc.innerHTML = `<span onclick="navigate('home')" style="cursor:pointer">Übersicht</span>
+      <span class="breadcrumb-sep">/</span>
+      <span onclick="navigate('edit','${ROUTE.clientId}')" style="cursor:pointer">${c?.ci.client || 'Kunde'}</span>
+      <span class="breadcrumb-sep">/</span>
+      <span class="current" style="color:var(--app-accent)">Dashboard</span>`;
+    ta.innerHTML = `
+      <button class="btn btn-sm" onclick="navigate('edit','${ROUTE.clientId}')">✏️ Bearbeiten</button>
+      <button class="btn btn-sm" onclick="window.print()">🖨️ PDF</button>
+      <button class="btn btn-primary btn-sm" onclick="saveAsHTML()">💾 HTML speichern</button>`;
+  }
+}
+
+function renderSidebar() {
+  const container = document.getElementById('sidebarClients');
+  document.querySelectorAll('.sidebar-item[data-nav]').forEach(el => el.classList.remove('active'));
+  document.getElementById('nav-home')?.classList.toggle('active', ROUTE.view === 'home');
+
+  container.innerHTML = APP.clients.map(c => `
+    <button class="sidebar-item ${ROUTE.clientId===c.id ? 'active' : ''}" data-nav="${c.id}"
+      onclick="navigate('dash','${c.id}')">
+      <span class="si-icon" style="background:${c.ci.primary};border-radius:5px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${contrastColor(c.ci.primary)}">${c.ci.logo?.charAt(0)||c.ci.client?.charAt(0)||'?'}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.ci.client||'(kein Name)'}</span>
+      ${c.monthly ? '<span class="si-badge">✓</span>' : ''}
+    </button>`).join('');
+}
+
+// ══════════════════════════════════════════
+//  HOME
+// ══════════════════════════════════════════
+function renderHome(container) {
+  if (!APP.clients.length) {
+    container.innerHTML = `
+      <div class="content">
+        <div class="empty-state">
+          <div class="empty-icon">📊</div>
+          <div class="empty-title">Noch keine Kunden</div>
+          <div class="empty-sub">Erstelle deinen ersten Kunden und importiere LinkedIn-Daten.</div>
+          <button class="btn btn-primary" onclick="createNewClient()">＋ Ersten Kunden anlegen</button>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const cards = APP.clients.map(c => {
+    const ins = c.monthly ? analyze(c.monthly, c.splitLabel) : null;
+    const status = !c.monthly ? 'empty' : 'ready';
+    const statusLabel = { empty:'Keine Daten', draft:'Entwurf', ready:'Dashboard bereit' }[status];
+    const statusClass = { empty:'status-empty', draft:'status-draft', ready:'status-ready' }[status];
+
+    return `
+    <div class="client-card" onclick="navigate('dash','${c.id}')">
+      <div class="client-card-stripe" style="background:${c.ci.primary}"></div>
+      <div class="client-card-head">
+        <div class="client-card-logo" style="background:${c.ci.primary};color:${contrastColor(c.ci.primary)}">
+          ${c.ci.logoImg ? `<img src="${c.ci.logoImg}" alt="">` : (c.ci.logo || c.ci.client?.charAt(0) || '?')}
+        </div>
+        <div>
+          <div class="client-card-name">${c.ci.client || '(kein Name)'}</div>
+          <div class="client-card-period">${c.ci.person ? c.ci.person + ' · ' : ''}${c.ci.period || '—'}</div>
+        </div>
+      </div>
+      ${ins ? `
+      <div class="client-card-kpis">
+        <div class="client-kpi"><div class="client-kpi-val">${fmtK(ins.totalImpr)}</div><div class="client-kpi-label">Impressionen</div></div>
+        <div class="client-kpi"><div class="client-kpi-val">+${fmtK(ins.totalFoll)}</div><div class="client-kpi-label">Follower</div></div>
+        <div class="client-kpi"><div class="client-kpi-val">${ins.avgEngRate.toFixed(1)}%</div><div class="client-kpi-label">Eng. Rate</div></div>
+      </div>` : `<div style="font-size:12px;color:var(--muted);padding:8px 0">Noch keine Daten importiert</div>`}
+      <div class="client-card-footer">
+        <span class="client-status ${statusClass}">${statusLabel}</span>
+        <span>${new Date(c.updatedAt).toLocaleDateString('de-DE')}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="content">
+      <div class="home-header">
+        <div>
+          <div class="home-title">Kundenprojekte</div>
+          <div class="home-sub">${APP.clients.length} Kunde${APP.clients.length!==1?'n':''} · klicke zum Öffnen</div>
+        </div>
+      </div>
+      <div class="clients-grid">
+        ${cards}
+        <div class="new-client-card" onclick="createNewClient()">
+          <div class="new-client-icon">＋</div>
+          <div class="new-client-label">Neuen Kunden anlegen</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════
+//  EDIT
+// ══════════════════════════════════════════
+function renderEdit(container) {
+  const c = getClient(ROUTE.clientId);
+  if (!c) { navigate('home'); return; }
+  const ci = c.ci;
+
+  const logoHtml = ci.logoImg
+    ? `<img src="${ci.logoImg}" alt="Logo">`
+    : (ci.logo || ci.client?.charAt(0) || '?');
+
+  container.innerHTML = `
+  <div class="content">
+    <div class="edit-header">
+      <div class="edit-logo-preview" id="editLogoPreview"
+        style="background:${ci.primary};color:${contrastColor(ci.primary)}">${logoHtml}</div>
+      <div>
+        <div class="edit-client-name" id="editClientName">${ci.client || 'Neuer Kunde'}</div>
+        <div class="edit-client-sub">${ci.person || 'Kein Ansprechpartner'} · ${ci.period || 'Kein Zeitraum'}</div>
+      </div>
+    </div>
+
+    <div class="step-tabs">
+      <button class="step-tab ${ROUTE.step==='ci'?'active':ci.client?'done':''}" onclick="setStep('ci')">
+        <span class="step-num">1</span> Corporate Identity
+      </button>
+      <button class="step-tab ${ROUTE.step==='data'?'active':c.monthly?'done':''}" onclick="setStep('data')">
+        <span class="step-num">2</span> Monatsdaten
+      </button>
+      <button class="step-tab ${ROUTE.step==='posts'?'active':c.posts?.length?'done':''}" onclick="setStep('posts')">
+        <span class="step-num">3</span> Top-Posts
+      </button>
+    </div>
+
+    <!-- Step: CI -->
+    <div id="stepCI" style="${ROUTE.step==='ci'?'':'display:none'}">
+      <div class="edit-section">
+        <div class="edit-section-title">🎨 Corporate Identity & Kundenprofil</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Kundenname *</label>
+            <input class="form-input" id="ci_client" value="${esc(ci.client)}" placeholder="z.B. PAYBACK GmbH" oninput="liveEditCI()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">LinkedIn-Person</label>
+            <input class="form-input" id="ci_person" value="${esc(ci.person)}" placeholder="z.B. Max Mustermann">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Zeitraum</label>
+            <input class="form-input" id="ci_period" value="${esc(ci.period)}" placeholder="Jan 2025 – Dez 2025">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Agenturname (Footer)</label>
+            <input class="form-input" id="ci_agency" value="${esc(ci.agency)}" placeholder="Branding People GmbH">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Primärfarbe</label>
+            <input class="form-input" type="color" id="ci_primary" value="${ci.primary}" oninput="liveEditCI()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Akzentfarbe</label>
+            <input class="form-input" type="color" id="ci_accent" value="${ci.accent}" oninput="liveEditCI()">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Logo-Buchstabe / Emoji</label>
+            <input class="form-input" id="ci_logo" value="${esc(ci.logo)}" placeholder="P oder 🚀" maxlength="3" oninput="liveEditCI()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Logo-Bild (optional)</label>
+            <input class="form-input" type="file" id="ci_logoImg" accept="image/*" onchange="handleLogoUpload(this)" style="padding:5px">
+          </div>
+        </div>
+        <div class="ci-bar" id="ciBar" style="background:${ci.primary};color:${contrastColor(ci.primary)}">
+          <div style="width:30px;height:30px;background:${ci.accent};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${contrastColor(ci.accent)};flex-shrink:0" id="ciBarLogo">${ci.logo || ci.client?.charAt(0) || 'K'}</div>
+          <span id="ciBarName" style="font-weight:600">${ci.client || 'Kundenname'} · LinkedIn Analytics</span>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button class="btn btn-primary" onclick="saveCIAndNext()">Weiter → Daten eingeben</button>
+      </div>
+    </div>
+
+    <!-- Step: Data -->
+    <div id="stepData" style="${ROUTE.step==='data'?'':'display:none'}">
+      <div class="edit-section">
+        <div class="edit-section-title">📊 Monatliche LinkedIn-Daten</div>
+
+        <div style="display:flex;gap:4px;margin-bottom:12px;background:var(--bg);padding:4px;border-radius:8px;width:fit-content">
+          <button class="tab-btn ${!c._manualMode?'active':''}" id="tabXLS" onclick="switchDataTab('xls')">📥 Excel/CSV Import</button>
+          <button class="tab-btn ${c._manualMode?'active':''}" id="tabMAN" onclick="switchDataTab('man')">✏️ Manuell eingeben</button>
+        </div>
+
+        <!-- Excel -->
+        <div id="xlsPane" style="${c._manualMode?'display:none':''}">
+          <div id="dataOk" class="data-ok ${c.monthly?'show':''}">
+            ✅ ${c.monthly ? c.monthly.labels.length + ' Monate geladen: ' + c.monthly.labels[0] + ' – ' + c.monthly.labels[c.monthly.labels.length-1] : ''}
+          </div>
+          <div class="upload-zone" id="uploadZone" onclick="document.getElementById('xlsFile').click()">
+            <div class="upload-icon">📊</div>
+            <div class="upload-title">Excel (.xlsx) oder CSV ablegen</div>
+            <div class="upload-sub">Spalten: Monat · Impressionen · Neue Follower · Engagements · Posts/Monat</div>
+            <input type="file" id="xlsFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleDataFile(this)">
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+            <span style="font-size:12px;color:var(--muted)">Erste Zeile = Header (wird übersprungen)</span>
+            <button class="btn btn-ghost btn-sm" onclick="downloadTemplate()">⬇️ Vorlage herunterladen</button>
+          </div>
+        </div>
+
+        <!-- Manual -->
+        <div id="manPane" style="${!c._manualMode?'display:none':''}">
+          <div class="dt-wrap">
+            <table class="dt">
+              <thead><tr><th class="t-left">Monat</th><th>Impressionen</th><th>Neue Follower</th><th>Engagements</th><th>Posts</th><th></th></tr></thead>
+              <tbody id="manBody"></tbody>
+            </table>
+          </div>
+          <div class="add-row" onclick="addManRow()">＋ Zeile hinzufügen</div>
+        </div>
+
+        <div class="form-group" style="margin-top:14px">
+          <label class="form-label">Vergleichspunkt: Agentur-Start ab Monat (für Vorher/Nachher)</label>
+          <select class="form-input" id="splitSel" style="max-width:280px">
+            <option value="">— kein Vergleich —</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between">
+        <button class="btn" onclick="setStep('ci')">← Zurück</button>
+        <button class="btn btn-primary" onclick="saveDataAndNext()">Weiter → Top-Posts</button>
+      </div>
+    </div>
+
+    <!-- Step: Posts -->
+    <div id="stepPosts" style="${ROUTE.step==='posts'?'':'display:none'}">
+      <div class="edit-section">
+        <div class="edit-section-title">🏆 Top-Posts <span style="font-size:11px;color:var(--muted);font-weight:400">— optional</span></div>
+        <div class="dt-wrap">
+          <table class="dt">
+            <thead><tr>
+              <th class="t-left" style="min-width:200px">Caption / Zitat</th>
+              <th class="t-left" style="min-width:130px">Label (Titel · Datum)</th>
+              <th style="min-width:90px">Impressionen</th>
+              <th style="min-width:80px">Kommentare</th>
+              <th style="min-width:140px">Content-Typ</th>
+              <th></th>
+            </tr></thead>
+            <tbody id="postsBody"></tbody>
+          </table>
+        </div>
+        <div class="add-row" onclick="addPostRow()">＋ Post hinzufügen</div>
+      </div>
+      <div style="display:flex;justify-content:space-between">
+        <button class="btn" onclick="setStep('data')">← Zurück</button>
+        <button class="btn btn-primary" onclick="savePostsAndDash()">🚀 Dashboard generieren</button>
+      </div>
+    </div>
+  </div>`;
+
+  // Restore manual data if exists
+  if (c._manualMode && c.monthly) restoreManualRows(c.monthly);
+  else if (!c._manualMode) buildManRows([]);
+  restorePostsRows(c.posts || []);
+  updateSplitSelect(c.monthly?.labels || [], c.splitLabel);
+
+  // Setup drag&drop
+  const uz = document.getElementById('uploadZone');
+  if (uz) {
+    uz.addEventListener('dragover', e => { e.preventDefault(); uz.classList.add('drag'); });
+    uz.addEventListener('dragleave', () => uz.classList.remove('drag'));
+    uz.addEventListener('drop', e => { e.preventDefault(); uz.classList.remove('drag'); if(e.dataTransfer.files[0]) processDataFile(e.dataTransfer.files[0]); });
+  }
+}
+
+function setStep(step) {
+  ROUTE.step = step;
+  ['CI','Data','Posts'].forEach(s => {
+    const el = document.getElementById('step'+s);
+    if (el) el.style.display = step.toLowerCase()===s.toLowerCase() ? '' : 'none';
+  });
+  document.querySelectorAll('.step-tab').forEach((t,i) => {
+    t.classList.toggle('active', ['ci','data','posts'][i]===step);
+  });
+}
+
+// ── Live CI preview
+function liveEditCI() {
+  const primary = document.getElementById('ci_primary')?.value || '#000';
+  const accent  = document.getElementById('ci_accent')?.value || '#fff';
+  const client  = document.getElementById('ci_client')?.value || 'Kunde';
+  const logo    = document.getElementById('ci_logo')?.value || client.charAt(0);
+  const bar = document.getElementById('ciBar');
+  if (bar) {
+    bar.style.background = primary;
+    bar.style.color = contrastColor(primary);
+    document.getElementById('ciBarLogo').style.background = accent;
+    document.getElementById('ciBarLogo').style.color = contrastColor(accent);
+    document.getElementById('ciBarLogo').textContent = logo;
+    document.getElementById('ciBarName').textContent = client + ' · LinkedIn Analytics';
+  }
+  document.getElementById('editClientName').textContent = client;
+  const lp = document.getElementById('editLogoPreview');
+  lp.style.background = primary;
+  lp.style.color = contrastColor(primary);
+  lp.innerHTML = logo;
+}
+
+let _tmpLogoImg = '';
+function handleLogoUpload(input) {
+  if (!input.files[0]) return;
+  const r = new FileReader();
+  r.onload = e => { _tmpLogoImg = e.target.result; liveEditCI(); };
+  r.readAsDataURL(input.files[0]);
+}
+
+// ── Save CI
+function saveCIAndNext() {
+  const c = getClient(ROUTE.clientId);
+  if (!c) return;
+  const client = document.getElementById('ci_client').value.trim();
+  if (!client) { showToast('Bitte einen Kundennamen eingeben', 'warn'); return; }
+  c.ci.client  = client;
+  c.ci.person  = document.getElementById('ci_person').value.trim();
+  c.ci.period  = document.getElementById('ci_period').value.trim();
+  c.ci.agency  = document.getElementById('ci_agency').value.trim();
+  c.ci.primary = document.getElementById('ci_primary').value;
+  c.ci.accent  = document.getElementById('ci_accent').value;
+  c.ci.logo    = document.getElementById('ci_logo').value.trim() || client.charAt(0);
+  if (_tmpLogoImg) c.ci.logoImg = _tmpLogoImg;
+  c.updatedAt  = Date.now();
+  saveApp(); renderSidebar();
+  setStep('data');
+  showToast('CI gespeichert', 'ok');
+}
+
+// ── Data tab switch
+function switchDataTab(tab) {
+  const c = getClient(ROUTE.clientId);
+  if (c) c._manualMode = tab === 'man';
+  document.getElementById('xlsPane').style.display = tab==='xls' ? '' : 'none';
+  document.getElementById('manPane').style.display = tab==='man' ? '' : 'none';
+  document.getElementById('tabXLS').classList.toggle('active', tab==='xls');
+  document.getElementById('tabMAN').classList.toggle('active', tab==='man');
+}
+
+// ── Manual rows
+let _manRowId = 0;
+function addManRow(month='', impr='', foll='', eng='', posts='') {
+  _manRowId++;
+  const id = _manRowId;
+  const tbody = document.getElementById('manBody');
+  const tr = document.createElement('tr');
+  tr.id = 'mr_'+id;
+  tr.innerHTML = `
+    <td class="t-left"><input value="${month}" placeholder="Jan 26" style="width:72px;font-family:'DM Sans',sans-serif;text-align:left"></td>
+    <td><input type="number" value="${impr}" placeholder="0"></td>
+    <td><input type="number" value="${foll}" placeholder="0"></td>
+    <td><input type="number" value="${eng}" placeholder="0"></td>
+    <td><input type="number" value="${posts}" placeholder="0"></td>
+    <td><button class="del-btn" onclick="this.closest('tr').remove();updateManualSplitSel()">✕</button></td>`;
+  tbody.appendChild(tr);
+  updateManualSplitSel();
+}
+function buildManRows(data) {
+  const tbody = document.getElementById('manBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  _manRowId = 0;
+  if (data && data.labels) {
+    data.labels.forEach((l,i) => addManRow(l, data.impressions[i], data.followers[i], data.engagements[i], data.postsPerMonth[i]));
+  } else {
+    for (let i = 0; i < 6; i++) addManRow();
+  }
+}
+function restoreManualRows(data) { buildManRows(data); }
+function readManualData() {
+  const rows = document.querySelectorAll('#manBody tr');
+  const d = { labels:[], impressions:[], followers:[], engagements:[], postsPerMonth:[] };
+  rows.forEach(tr => {
+    const inp = tr.querySelectorAll('input');
+    const lbl = inp[0]?.value.trim();
+    if (!lbl) return;
+    d.labels.push(lbl);
+    d.impressions.push(toN(inp[1]?.value));
+    d.followers.push(toN(inp[2]?.value));
+    d.engagements.push(toN(inp[3]?.value));
+    d.postsPerMonth.push(toN(inp[4]?.value));
+  });
+  return d;
+}
+function updateManualSplitSel() {
+  const labels = [];
+  document.querySelectorAll('#manBody tr').forEach(tr => {
+    const v = tr.querySelector('input')?.value.trim();
+    if (v) labels.push(v);
+  });
+  updateSplitSelect(labels, '');
+}
+
+// ── File upload
+function handleDataFile(input) { if (input.files[0]) processDataFile(input.files[0]); }
+function processDataFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'csv') { const r = new FileReader(); r.onload = e => parseCSV(e.target.result); r.readAsText(file,'UTF-8'); }
+  else { const r = new FileReader(); r.onload = e => parseXLSX(e.target.result); r.readAsArrayBuffer(file); }
+}
+function parseXLSX(buf) {
+  try {
+    const wb = XLSX.read(buf,{type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    applyDataRows(XLSX.utils.sheet_to_json(ws,{header:1,defval:''}));
+  } catch(e) { showToast('Fehler: '+e.message,'warn'); }
+}
+function parseCSV(text) {
+  const sep = text.includes(';') ? ';' : ',';
+  applyDataRows(text.trim().split(/\r?\n/).map(l=>l.split(sep).map(s=>s.trim())));
+}
+function applyDataRows(rows) {
+  let start = 0;
+  for (let i=0;i<Math.min(5,rows.length);i++) {
+    if (/monat|month|impressi/i.test(rows[i].join(' '))) { start=i+1; break; }
+  }
+  const d = { labels:[],impressions:[],followers:[],engagements:[],postsPerMonth:[] };
+  for (let i=start;i<rows.length;i++) {
+    const r=rows[i]; const lbl=String(r[0]||'').trim();
+    if (!lbl) continue;
+    d.labels.push(lbl);
+    d.impressions.push(toN(r[1])); d.followers.push(toN(r[2]));
+    d.engagements.push(toN(r[3])); d.postsPerMonth.push(toN(r[4]));
+  }
+  if (!d.labels.length) { showToast('Keine Daten gefunden','warn'); return; }
+  const c = getClient(ROUTE.clientId);
+  if (c) { c.monthly=d; c.updatedAt=Date.now(); saveApp(); }
+  const ok = document.getElementById('dataOk');
+  if (ok) { ok.textContent=`✅ ${d.labels.length} Monate geladen: ${d.labels[0]} – ${d.labels[d.labels.length-1]}`; ok.classList.add('show'); }
+  updateSplitSelect(d.labels, c?.splitLabel||'');
+  showToast(`${d.labels.length} Monate importiert`,'ok');
+}
+function updateSplitSelect(labels, current) {
+  const sel = document.getElementById('splitSel');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— kein Vergleich —</option>';
+  labels.forEach(l => {
+    const o=document.createElement('option'); o.value=l; o.textContent=l;
+    if (l===current) o.selected=true;
+    sel.appendChild(o);
+  });
+}
+
+// ── Save data
+function saveDataAndNext() {
+  const c = getClient(ROUTE.clientId);
+  if (!c) return;
+  if (c._manualMode) {
+    const d = readManualData();
+    if (!d.labels.length) { showToast('Bitte mindestens 1 Monat eingeben','warn'); return; }
+    c.monthly = d;
+  }
+  if (!c.monthly?.labels?.length) { showToast('Keine Daten vorhanden','warn'); return; }
+  c.splitLabel = document.getElementById('splitSel')?.value || '';
+  c.updatedAt = Date.now();
+  saveApp();
+  setStep('posts');
+  showToast('Daten gespeichert','ok');
+}
+
+// ── Posts rows
+const TYPE_META = {
+  humor:      { label:'Humor / Persönlich',  bg:'#E8F8F2', col:'#00624A', bar:'#00A86B' },
+  tech:       { label:'Tech / Trend extern', bg:'#E8EEF8', col:'#002070', bar:'#003087' },
+  networking: { label:'Networking / Event',  bg:'#F0ECF8', col:'#4A2E8C', bar:'#7B68EE' },
+  story:      { label:'Persönliche Story',   bg:'#F1EFEA', col:'#4A4A4A', bar:'#6B7A99' },
+  brand:      { label:'Brand Story',         bg:'#F1EFEA', col:'#4A4A4A', bar:'#6B7A99' },
+  thought:    { label:'Thought Leadership',  bg:'#FFF0E8', col:'#7A3000', bar:'#FF6600' },
+  industry:   { label:'Branchenwissen',      bg:'#FFF0E8', col:'#7A3000', bar:'#FF6600' },
+};
+const TYPE_OPTS = Object.entries(TYPE_META).map(([v,m])=>`<option value="${v}">${m.label}</option>`).join('');
+let _pRowId = 0;
+function addPostRow(cap='', lbl='', impr='', comm='', type='story') {
+  _pRowId++;
+  const tbody = document.getElementById('postsBody');
+  const tr = document.createElement('tr');
+  const opts = Object.entries(TYPE_META).map(([v,m])=>`<option value="${v}" ${v===type?'selected':''}>${m.label}</option>`).join('');
+  tr.innerHTML = `
+    <td class="t-left"><input value="${esc(cap)}" placeholder="Caption…" style="width:200px;text-align:left;font-family:'DM Sans',sans-serif"></td>
+    <td class="t-left"><input value="${esc(lbl)}" placeholder="Titel · Monat Jahr" style="width:130px;text-align:left;font-family:'DM Sans',sans-serif"></td>
+    <td><input type="number" value="${impr}" placeholder="0"></td>
+    <td><input type="number" value="${comm}" placeholder="0"></td>
+    <td><select style="width:140px;padding:4px 7px;border:1px solid var(--border);border-radius:5px;font-size:12px;font-family:'DM Sans',sans-serif;background:#fff">${opts}</select></td>
+    <td><button class="del-btn" onclick="this.closest('tr').remove()">✕</button></td>`;
+  tbody.appendChild(tr);
+}
+function restorePostsRows(posts) {
+  const tbody = document.getElementById('postsBody');
+  if (!tbody) return;
+  tbody.innerHTML = ''; _pRowId = 0;
+  posts.forEach(p => addPostRow(p.caption, p.label, p.impr, p.comments, p.type));
+}
+function readPosts() {
+  return [...document.querySelectorAll('#postsBody tr')].map(tr => {
+    const inp = tr.querySelectorAll('input');
+    const sel = tr.querySelector('select');
+    const cap = inp[0]?.value.trim();
+    if (!cap) return null;
+    return { caption:cap, label:inp[1]?.value.trim(), impr:toN(inp[2]?.value), comments:toN(inp[3]?.value), type:sel?.value||'story' };
+  }).filter(Boolean).sort((a,b)=>b.impr-a.impr);
+}
+function savePostsAndDash() {
+  const c = getClient(ROUTE.clientId);
+  if (!c) return;
+  c.posts = readPosts();
+  c.updatedAt = Date.now();
+  saveApp();
+  navigate('dash', ROUTE.clientId);
+}
+
+// ══════════════════════════════════════════
+//  DASHBOARD RENDER
+// ══════════════════════════════════════════
+const CHARTS = {};
+
+function renderDash(container) {
+  const c = getClient(ROUTE.clientId);
+  if (!c) { navigate('home'); return; }
+  if (!c.monthly?.labels?.length) { navigate('edit', ROUTE.clientId, 'data'); return; }
+
+  const ci = c.ci;
+  const ins = analyze(c.monthly, c.splitLabel);
+  const p = ci.primary;
+
+  container.innerHTML = `
+    <div class="dash-header" id="dashHdr" style="background:${p}">
+      <div class="dh-logo">
+        <div class="dh-logomark" style="background:${ci.accent};color:${contrastColor(ci.accent)}">
+          ${ci.logoImg?`<img src="${ci.logoImg}" alt="">`:(ci.logo||ci.client?.charAt(0)||'?')}
+        </div>
+        <div>
+          <div class="dh-name">${ci.client} · LinkedIn Analytics</div>
+          <div class="dh-period">${ci.person ? ci.person+' · ':''} ${ci.period}</div>
+        </div>
+      </div>
+      <span class="dh-badge">${ci.period}</span>
+    </div>
+    <div class="dash-topbar">
+      <button class="btn btn-sm" onclick="navigate('edit','${c.id}')">✏️ Bearbeiten</button>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="window.print()">🖨️ PDF</button>
+        <button class="btn btn-primary btn-sm" onclick="saveAsHTML()">💾 HTML speichern</button>
+      </div>
+    </div>
+    <div class="dash-content" id="dashContent"></div>`;
+
+  document.getElementById('dashContent').innerHTML = buildDashHTML(c, ins);
+  setTimeout(() => renderCharts(c, ins), 60);
+}
+
+function buildDashHTML(c, ins) {
+  const ci = c.ci;
+  const m  = c.monthly;
+  const { totalImpr, totalFoll, totalEng, avgEngRate, trendPct, trend, engLabel, engColor, beforeAfter, recs } = ins;
+  const n = m.labels.length;
+  const accent = ci.accent;
+
+  let html = `
+  <!-- HERO -->
+  <div class="hero" style="background:${ci.primary};margin-bottom:1.5rem">
+    <div class="hero-inner">
+      <div>
+        <div class="hero-title">LinkedIn Performance${ci.person?'<br>'+ci.person:''}</div>
+        <div class="hero-sub">${ci.period}${c.splitLabel?' · Zusammenarbeit ab '+c.splitLabel:''}</div>
+      </div>
+      <div class="hero-kpis">
+        <div><div class="hero-kpi-val" style="color:${accent}">${fmtK(totalImpr)}</div><div class="hero-kpi-lbl">Impressionen</div></div>
+        <div><div class="hero-kpi-val" style="color:${accent}">+${fmt(totalFoll)}</div><div class="hero-kpi-lbl">Neue Follower</div></div>
+        <div><div class="hero-kpi-val" style="color:${accent}">${avgEngRate.toFixed(1)}%</div><div class="hero-kpi-lbl">Ø Eng. Rate</div></div>
+        <div><div class="hero-kpi-val" style="color:${trend==='rückläufig'?'#FF8080':accent}">${trend==='wachsend'?'+':''}${trendPct}%</div><div class="hero-kpi-lbl">Reichweiten-Trend</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI CARDS -->
+  <div class="kpi-grid">
+    <div class="kpi-card" style="--k-accent:${ci.primary}">
+      <div class="kpi-lbl">Impressionen gesamt</div>
+      <div class="kpi-val">${fmt(totalImpr)}</div>
+      <div class="kpi-sub"><span class="txt-g">↑</span> Ø ${fmtK(Math.round(totalImpr/n))} / Monat</div>
+    </div>
+    <div class="kpi-card" style="--k-accent:${ci.accent}">
+      <div class="kpi-lbl">Neue Follower</div>
+      <div class="kpi-val">+${fmt(totalFoll)}</div>
+      <div class="kpi-sub"><span class="txt-g">↑</span> Ø ${Math.round(totalFoll/n)} / Monat</div>
+    </div>
+    <div class="kpi-card" style="--k-accent:#00A86B">
+      <div class="kpi-lbl">Engagements gesamt</div>
+      <div class="kpi-val">${fmt(totalEng)}</div>
+      <div class="kpi-sub"><span class="txt-g">↑</span> Ø ${fmt(Math.round(totalEng/n))} / Monat</div>
+    </div>
+    <div class="kpi-card" style="--k-accent:${engColor}">
+      <div class="kpi-lbl">Ø Engagement Rate</div>
+      <div class="kpi-val" style="color:${engColor}">${avgEngRate.toFixed(1)}%</div>
+      <div class="kpi-sub">${engLabel} · Benchmark: 1–2%</div>
+    </div>
+  </div>`;
+
+  if (beforeAfter) {
+    const {before,after,imprGrowth,follGrowth} = beforeAfter;
+    html += `
+  <div class="section-hd"><span class="section-lbl">Vorher vs. Nachher</span><div class="section-line"></div></div>
+  <div class="split">
+    <div class="split-side split-before">
+      <div class="split-lbl">Vorher · ${before.label}</div>
+      <div class="split-rows">
+        <div class="split-row"><span class="split-row-lbl">Posts/Monat</span><span class="split-row-val">Ø ${before.avgPosts.toFixed(1)}</span></div>
+        <div class="split-row"><span class="split-row-lbl">Impressionen/Monat</span><span class="split-row-val">Ø ${fmtK(Math.round(before.avgImpr))}</span></div>
+        <div class="split-row"><span class="split-row-lbl">Follower/Monat</span><span class="split-row-val">Ø ${Math.round(before.avgFoll)}</span></div>
+        <div class="split-row"><span class="split-row-lbl">Engagements/Monat</span><span class="split-row-val">Ø ${fmt(Math.round(before.avgEng))}</span></div>
+      </div>
+    </div>
+    <div class="split-div" style="background:${ci.primary};color:${ci.accent}">→</div>
+    <div class="split-side split-after">
+      <div class="split-lbl">Nachher · ${after.label}</div>
+      <div class="split-rows">
+        <div class="split-row"><span class="split-row-lbl">Posts/Monat</span><span class="split-row-val">Ø ${after.avgPosts.toFixed(1)}</span></div>
+        <div class="split-row"><span class="split-row-lbl">Impressionen/Monat</span><span class="split-row-val">Ø ${fmtK(Math.round(after.avgImpr))} <small>(+${imprGrowth}%)</small></span></div>
+        <div class="split-row"><span class="split-row-lbl">Follower/Monat</span><span class="split-row-val">Ø ${Math.round(after.avgFoll)} <small>(+${follGrowth}%)</small></span></div>
+        <div class="split-row"><span class="split-row-lbl">Engagements/Monat</span><span class="split-row-val">Ø ${fmt(Math.round(after.avgEng))}</span></div>
+      </div>
+    </div>
+  </div>`;
+  }
+
+  html += `
+  <div class="section-hd"><span class="section-lbl">Reichweite & Wachstum</span><div class="section-line"></div></div>
+  <div class="chart-card" style="margin-bottom:14px">
+    <div class="chart-title">Impressionen pro Monat</div>
+    <div class="chart-sub">${c.splitLabel?'Rot = vor '+c.splitLabel+' · farbig = danach':'Monatliche Reichweite'}</div>
+    <div style="position:relative;height:220px"><canvas id="cImpr"></canvas></div>
+  </div>
+  <div class="chart-2">
+    <div class="chart-card"><div class="chart-title">Neue Follower</div><div style="position:relative;height:180px"><canvas id="cFoll"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">Engagements</div><div style="position:relative;height:180px"><canvas id="cEng"></canvas></div></div>
+  </div>`;
+
+  if (c.posts?.length) {
+    html += `
+  <div class="section-hd"><span class="section-lbl">Top-Posts</span><div class="section-line"></div></div>
+  <div class="chart-card" style="margin-bottom:14px">
+    <div class="chart-title">Beste Posts nach Impressionen</div>
+    <div class="posts-list">`;
+    c.posts.forEach((p,i) => {
+      const m = TYPE_META[p.type]||TYPE_META.story;
+      const rc = i===0?'g':i===1?'s':i===2?'b':'';
+      html += `<div class="post-row">
+        <div class="post-rank ${rc}">#${i+1}</div>
+        <div><div class="post-cap">${p.caption}</div><div class="post-meta">${p.label}${p.comments?' · '+p.comments+' Kommentare':''}</div></div>
+        <div class="post-pill" style="background:${m.bg};color:${m.col}">${m.label}</div>
+        <div class="post-impr" style="color:${ci.primary}">${fmt(p.impr)}</div>
+      </div>`;
+    });
+    html += `</div></div>
+  <div class="chart-card" style="margin-bottom:14px">
+    <div style="position:relative;height:${Math.min(380,c.posts.length*42+60)}px"><canvas id="cPosts"></canvas></div>
+  </div>`;
+  }
+
+  html += `
+  <div class="section-hd"><span class="section-lbl">Automatische Insights & Empfehlungen</span><div class="section-line"></div></div>
+  <div class="insight-grid">`;
+  recs.forEach(r => {
+    html += `<div class="insight-card">
+      <div class="insight-stripe" style="background:${r.color}"></div>
+      <div class="insight-badge" style="background:${r.badgeBg};color:${r.badgeCol}">${r.badge}</div>
+      <div class="insight-val" style="color:${r.color}">${r.val}</div>
+      <div class="insight-title">${r.title}</div>
+      <div class="insight-body">${r.body}</div>
+      <div class="insight-rec" style="color:${r.color}">→ ${r.rec}</div>
+    </div>`;
+  });
+  html += `</div>
+  <div style="text-align:center;font-size:11px;color:var(--muted);padding:2rem 0 0;border-top:1px solid var(--border);margin-top:2rem">
+    Erstellt von <strong style="color:${ci.primary}">${ci.agency}</strong> · LinkedIn Analytics · ${ci.period}
+  </div>`;
+
+  return html;
+}
+
+function renderCharts(c, ins) {
+  const m = c.monthly;
+  const primary = c.ci.primary;
+  const splitIdx = c.splitLabel ? m.labels.indexOf(c.splitLabel) : -1;
+  const gridC = 'rgba(0,0,0,0.05)', txtC = '#6E7A9F';
+  const base = { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} };
+  const xScale = { ticks:{color:txtC,font:{size:10},autoSkip:false,maxRotation:45}, grid:{color:gridC} };
+  const yScale = (cb) => ({ ticks:{color:txtC,font:{size:10},callback:cb||(v=>v)}, grid:{color:gridC} });
+  const barColors = m.labels.map((_,i) => splitIdx>=0 ? (i<splitIdx?'#D93B3B':primary) : primary);
+
+  destroyChart('impr');
+  const cImpr = document.getElementById('cImpr');
+  if (cImpr) charts.impr = new Chart(cImpr, splitIdx > 0 ? {
+    type:'bar', data:{ labels:m.labels, datasets:[
+      { label:'Vorher', data:m.impressions.map((v,i)=>i<splitIdx?v:0), backgroundColor:'#D93B3B', borderRadius:4 },
+      { label:'Nachher', data:m.impressions.map((v,i)=>i>=splitIdx?v:0), backgroundColor:primary, borderRadius:4 }
+    ]}, options:{...base, scales:{ x:{...xScale,stacked:true}, y:{...yScale(v=>v>=1000?(v/1000).toFixed(0)+'K':v),stacked:true} }}
+  } : {
+    type:'bar', data:{ labels:m.labels, datasets:[{ data:m.impressions, backgroundColor:primary, borderRadius:4 }]},
+    options:{...base, scales:{ x:xScale, y:yScale(v=>v>=1000?(v/1000).toFixed(0)+'K':v) }}
+  });
+
+  destroyChart('foll');
+  const cFoll = document.getElementById('cFoll');
+  if (cFoll) charts.foll = new Chart(cFoll, { type:'bar', data:{ labels:m.labels, datasets:[{data:m.followers,backgroundColor:barColors,borderRadius:3}]}, options:{...base,scales:{x:xScale,y:yScale()}} });
+
+  destroyChart('eng');
+  const cEng = document.getElementById('cEng');
+  if (cEng) charts.eng = new Chart(cEng, { type:'line', data:{ labels:m.labels, datasets:[{data:m.engagements,borderColor:primary,backgroundColor:primary+'22',fill:true,pointBackgroundColor:barColors,pointRadius:4,borderWidth:2,tension:0.35}]}, options:{...base,scales:{x:xScale,y:yScale()}} });
+
+  destroyChart('posts');
+  const cPosts = document.getElementById('cPosts');
+  if (cPosts && c.posts?.length) {
+    charts.posts = new Chart(cPosts, { type:'bar', data:{ labels:c.posts.map(p=>p.label||p.caption.slice(0,28)+'…'), datasets:[{data:c.posts.map(p=>p.impr),backgroundColor:c.posts.map(p=>TYPE_META[p.type]?.bar||primary),borderRadius:5,borderSkipped:false}]}, options:{...base,indexAxis:'y',scales:{x:{ticks:{color:txtC,font:{size:10},callback:v=>v>=1000?(v/1000).toFixed(0)+'K':v},grid:{color:gridC}},y:{ticks:{color:txtC,font:{size:10}},grid:{display:false}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+ctx.parsed.x.toLocaleString('de-DE')+' Impressionen'}}}} });
+  }
+}
+function destroyChart(id) { if(CHARTS[id]){CHARTS[id].destroy();delete CHARTS[id];} }
+// Override to use CHARTS not charts
+const charts = CHARTS;
+
+// ══════════════════════════════════════════
+//  ANALYSIS ENGINE
+// ══════════════════════════════════════════
+function analyze(monthly, splitLabel) {
+  const {labels,impressions,followers,engagements,postsPerMonth} = monthly;
+  const n = labels.length;
+  const totalImpr = sum(impressions), totalFoll = sum(followers), totalEng = sum(engagements);
+  const totalPosts = sum(postsPerMonth);
+  const avgEngRate = totalImpr > 0 ? totalEng/totalImpr*100 : 0;
+  const avgPostsPerMonth = n > 0 ? totalPosts/n : 0;
+
+  const bestImprIdx = impressions.indexOf(Math.max(...impressions));
+  const third = Math.max(1,Math.floor(n/3));
+  const firstAvg = avg(impressions.slice(0,third)), lastAvg = avg(impressions.slice(-third));
+  const trendPct = firstAvg > 0 ? Math.round((lastAvg-firstAvg)/firstAvg*100) : 0;
+  const trend = trendPct>15?'wachsend':trendPct<-15?'rückläufig':'stabil';
+
+  let engLabel, engColor;
+  if (avgEngRate>=4)      {engLabel='Exzellent';engColor='#00A86B';}
+  else if (avgEngRate>=2) {engLabel='Gut';engColor='#00A86B';}
+  else if (avgEngRate>=1) {engLabel='Durchschnitt';engColor='#F59E0B';}
+  else                    {engLabel='Unter Benchmark';engColor='#E03B3B';}
+
+  let beforeAfter = null;
+  if (splitLabel) {
+    const si = labels.indexOf(splitLabel);
+    if (si > 0) {
+      const b = { avgImpr:avg(impressions.slice(0,si)), avgFoll:avg(followers.slice(0,si)), avgEng:avg(engagements.slice(0,si)), avgPosts:avg(postsPerMonth.slice(0,si)), label:`${labels[0]} – ${labels[si-1]}` };
+      const a = { avgImpr:avg(impressions.slice(si)), avgFoll:avg(followers.slice(si)), avgEng:avg(engagements.slice(si)), avgPosts:avg(postsPerMonth.slice(si)), label:`${labels[si]} – ${labels[n-1]}` };
+      beforeAfter = { before:b, after:a, imprGrowth:b.avgImpr>0?Math.round((a.avgImpr-b.avgImpr)/b.avgImpr*100):0, follGrowth:b.avgFoll>0?Math.round((a.avgFoll-b.avgFoll)/b.avgFoll*100):0, splitIdx:si };
+    }
+  }
+
+  const recs = [];
+  if (trend==='wachsend') {
+    recs.push({ color:'#00A86B',badgeBg:'#E8F8F2',badgeCol:'#00624A',badge:'Wachstum',
+      val:`+${trendPct}% Trend`,title:'Momentum beibehalten',
+      body:`Die Reichweite wächst — bester Monat war ${labels[bestImprIdx]} mit ${fmt(impressions[bestImprIdx])} Impressionen. Analysiere, welche Inhalte diesen Monat gepusht haben, und wiederhole dieses Format gezielt.`,
+      rec:`Bestseller-Format identifizieren & monatlich wiederholen` });
+  } else if (trend==='rückläufig') {
+    recs.push({ color:'#E03B3B',badgeBg:'#FFE8E8',badgeCol:'#8A0000',badge:'Handlungsbedarf',
+      val:`${trendPct}% Trend`,title:'Content-Format überdenken',
+      body:`Die Reichweite ist rückläufig. Höchstwert war ${labels[bestImprIdx]} (${fmt(impressions[bestImprIdx])} Impressionen). Ein A/B-Test mit persönlichen Geschichten, Branchen-News oder Umfragen kann die Kurve drehen.`,
+      rec:`Neues Format testen: 1× persönlicher Post + 1× Meinungs-Post pro Monat` });
+  } else {
+    recs.push({ color:'#F59E0B',badgeBg:'#FFF0E8',badgeCol:'#7A3000',badge:'Potenzial',
+      val:'Stabiler Verlauf',title:'Nächste Wachstumsstufe',
+      body:`Stabile Performance, aber ungenutztes Potenzial. Durch konsequenteren Rhythmus (6–8×/Monat) und gezielte Branchen-Trend-Reaktionen lässt sich die Reichweite systematisch steigern.`,
+      rec:`Posting-Frequenz auf ${Math.max(6,Math.round(avgPostsPerMonth)+2)}×/Monat erhöhen` });
+  }
+
+  if (avgEngRate >= 3) {
+    recs.push({ color:'#5B63FE',badgeBg:'#EEEFFE',badgeCol:'#2D3561',badge:'Engagement',
+      val:`${avgEngRate.toFixed(1)}% Ø Rate`,title:'Starke Community-Bindung',
+      body:`${avgEngRate.toFixed(1)}% liegt ${avgEngRate>=4?'weit ':''}über dem B2B-Benchmark (1–2%). Das zeigt echtes Follower-Interesse. Antworte auf jeden Kommentar — das befeuert den LinkedIn-Algorithmus zusätzlich.`,
+      rec:`Kommentare aktiv beantworten → Algorithmus-Boost nutzen` });
+  } else {
+    recs.push({ color:'#F59E0B',badgeBg:'#FFF9D6',badgeCol:'#7A5C00',badge:'Engagement',
+      val:`${avgEngRate.toFixed(1)}% Ø Rate`,title:'Engagement-Rate steigern',
+      body:`Mit ${avgEngRate.toFixed(1)}% liegt die Rate ${avgEngRate>=1?'im':'unter dem'} B2B-Durchschnitt. Direktere Fragen am Ende jedes Posts, Umfragen und persönliche Standpunkte steigern die Interaktion signifikant.`,
+      rec:`Jeden Post mit einer konkreten Frage an die Community beenden` });
+  }
+
+  recs.push({ color:'#00A86B',badgeBg:'#E8F8F2',badgeCol:'#00624A',badge:'Frequenz',
+    val:`Ø ${avgPostsPerMonth>0?avgPostsPerMonth.toFixed(1):'?'} Posts/Monat`,title:'Content-Kadenz',
+    body:avgPostsPerMonth>0
+      ?`Im Schnitt ${avgPostsPerMonth.toFixed(1)} Posts/Monat. LinkedIn belohnt Konstanz: ein gleichmäßiger Rhythmus von 6–8 Posts/Monat erzielt mehr organische Reichweite als sporadische Hochphasen.`
+      :`Ein regelmäßiger Rhythmus (6–8 Posts/Monat, verteilt auf 1–2 je Woche) ist einer der stärksten Hebel für organische LinkedIn-Reichweite.`,
+    rec:avgPostsPerMonth<5?`Frequenz auf 6–8×/Monat steigern`:avgPostsPerMonth<8?`Frequenz halten, Qualität steigern`:`Qualität über Quantität priorisieren` });
+
+  return { totalImpr, totalFoll, totalEng, avgEngRate, avgPostsPerMonth, bestImprIdx, trendPct, trend, engLabel, engColor, beforeAfter, recs, n };
+}
+
+// ══════════════════════════════════════════
+//  CLIENT CRUD
+// ══════════════════════════════════════════
+function getClient(id) { return APP.clients.find(c=>c.id===id); }
+
+function createNewClient() {
+  const c = newClient();
+  APP.clients.push(c);
+  saveApp();
+  navigate('edit', c.id, 'ci');
+}
+
+function askDeleteClient(id) {
+  const c = getClient(id);
+  if (!c) return;
+  document.getElementById('deleteClientName').textContent = c.ci.client || '(kein Name)';
+  document.getElementById('confirmDeleteBtn').onclick = () => { deleteClient(id); closeModal('deleteModal'); };
+  openModal('deleteModal');
+}
+
+function deleteClient(id) {
+  APP.clients = APP.clients.filter(c=>c.id!==id);
+  saveApp();
+  navigate('home');
+  showToast('Kunde gelöscht');
+}
+
+// ══════════════════════════════════════════
+//  EXPORT
+// ══════════════════════════════════════════
+function saveAsHTML() {
+  const html = document.documentElement.outerHTML;
+  const blob = new Blob([html], { type:'text/html;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'LinkedIn_Studio.html';
+  a.click();
+  showToast('App gespeichert (alle Kunden enthalten)', 'ok');
+}
+
+function downloadTemplate() {
+  const rows = [
+    ['Monat','Impressionen','Neue Follower','Engagements','Posts/Monat'],
+    ['Jan 26','45000','180','1200','6'],
+    ['Feb 26','52000','210','1450','7'],
+    ['Mrz 26','48000','195','1300','6'],
+    ['Apr 26','61000','250','1700','8'],
+    ['Mai 26','55000','230','1550','7'],
+    ['Jun 26','70000','280','1900','8'],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Monatsdaten');
+  XLSX.writeFile(wb, 'LinkedIn_Daten_Vorlage.xlsx');
+  showToast('Vorlage heruntergeladen', 'ok');
+}
+
+// ══════════════════════════════════════════
+//  MODAL / TOAST
+// ══════════════════════════════════════════
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.overlay').forEach(el => el.addEventListener('click', e => { if(e.target===el) el.classList.remove('open'); }));
+
+let _toastTimer;
+function showToast(msg, type) {
+  clearTimeout(_toastTimer);
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (type?' '+type:'') + ' show';
+  _toastTimer = setTimeout(()=>t.classList.remove('show'), 2800);
+}
+
+// ══════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════
+function toN(v) { return parseInt(String(v||'').replace(/[^\d-]/g,''))||0; }
+function sum(a) { return a.reduce((x,y)=>x+y,0); }
+function avg(a) { return a.length ? sum(a)/a.length : 0; }
+function fmt(n) { return Math.round(n).toLocaleString('de-DE'); }
+function fmtK(n){ return n>=1000?(n/1000).toFixed(0)+'K':String(n); }
+function esc(s) { return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+function hexToRgb(hex) {
+  hex = hex.replace('#','');
+  if(hex.length===3) hex=hex.split('').map(c=>c+c).join('');
+  return [parseInt(hex.slice(0,2),16),parseInt(hex.slice(2,4),16),parseInt(hex.slice(4,6),16)];
+}
+function contrastColor(hex) {
+  try { const [r,g,b]=hexToRgb(hex); return (r*0.299+g*0.587+b*0.114)>140?'#1A1F36':'#FFFFFF'; }
+  catch { return '#FFFFFF'; }
+}
+
+// ══════════════════════════════════════════
+//  BOOT
+// ══════════════════════════════════════════
+renderApp();
+</script>
+</body>
+</html>
