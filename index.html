@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-14 -->
+<!-- v20260603-15 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -638,7 +638,7 @@ const APP = loadApp();
   };
   if (idx >= 0) APP.clients[idx] = fresh;
   else APP.clients.unshift(fresh);
-  try { localStorage.setItem('linkedin_studio_v1', JSON.stringify(APP)); } catch(e) {}
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(APP)); } catch(e) {}
 })();
 
 // ── Auto-fix: repair clients where monthly was saved with 0 labels (broken parse from old code)
@@ -1022,7 +1022,7 @@ function renderEdit(container) {
         <div class="add-row" onclick="addPostRow()">＋ Post hinzufügen</div>
       </div>
       <div style="display:flex;justify-content:space-between">
-        <button class="btn" onclick="setStep('data')">← Zurück</button>
+        <button class="btn" onclick="autoSavePosts();setStep('data')">← Zurück</button>
         <button class="btn btn-primary" onclick="savePostsAndDash()">🚀 Dashboard generieren</button>
       </div>
     </div>
@@ -1657,6 +1657,7 @@ function mergeImportResults(results) {
   // Merge all into a map keyed by sortKey
   const mergeMap = new Map(); // sortKey → {label, impressions, followers, engagements, postsPerMonth}
   let allPosts = [];
+  let allFlopPosts = [];
 
   results.forEach(res => {
     const { d, autoPosts } = res;
@@ -1673,19 +1674,23 @@ function mergeImportResults(results) {
       m.postsPerMonth += (d.postsPerMonth[i] || 0);
     });
     allPosts = allPosts.concat(autoPosts || []);
+    allFlopPosts = allFlopPosts.concat(res.autoFlopPosts || []);
   });
 
   const sorted = [...mergeMap.values()].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
+  const totalFollowers = results.reduce((best, r) => Math.max(best, r.d?.totalFollowers || 0), 0);
   const d = {
     labels: sorted.map(m=>m.label), _sortKeys: sorted.map(m=>m.sortKey),
     impressions: sorted.map(m=>m.impressions), followers: sorted.map(m=>m.followers),
-    engagements: sorted.map(m=>m.engagements), postsPerMonth: sorted.map(m=>m.postsPerMonth)
+    engagements: sorted.map(m=>m.engagements), postsPerMonth: sorted.map(m=>m.postsPerMonth),
+    totalFollowers
   };
   allPosts = allPosts.sort((a,b)=>b.impr-a.impr).slice(0,10);
+  allFlopPosts = allFlopPosts.sort((a,b)=>a.impr-b.impr).slice(0,5);
 
   const totalRows = results.reduce((s,r)=>s+r.totalRows,0);
   const modeLabel = results.map(r=>r._filename||r.mode).join(' + ');
-  return { d, mode:'merged', months:sorted.length, totalRows, autoPosts:allPosts, _mergeLabel:modeLabel };
+  return { d, mode:'merged', months:sorted.length, totalRows, autoPosts:allPosts, autoFlopPosts:allFlopPosts, _mergeLabel:modeLabel };
 }
 
 // ── Called when all files in queue are processed
@@ -1694,10 +1699,21 @@ function finalizeMultiImport() {
   if (!_multiResults.length) { showToast('Keine Daten erkannt — Format prüfen','warn'); return; }
 
   let finalResult;
-  if (_mergeMode && _pendingImport) {
-    // Add to existing data
-    const existingResult = _pendingImport;
-    finalResult = mergeImportResults([existingResult, ..._multiResults]);
+  if (_mergeMode) {
+    // Merge with already-saved client data (not _pendingImport which may be null)
+    const c = getClient(ROUTE.clientId);
+    if (c && c.monthly && c.monthly.labels && c.monthly.labels.length) {
+      const existingResult = {
+        d: c.monthly,
+        autoPosts: c.posts || [],
+        autoFlopPosts: c.flopPosts || [],
+        totalRows: c.monthly.labels.length,
+        _filename: null
+      };
+      finalResult = mergeImportResults([existingResult, ..._multiResults]);
+    } else {
+      finalResult = mergeImportResults(_multiResults);
+    }
   } else {
     finalResult = mergeImportResults(_multiResults);
   }
@@ -2017,6 +2033,8 @@ const TYPE_META = {
   humor:      { label:'Humor / Persönlich',  bg:'#E8F8F2', col:'#00624A', bar:'#00A86B' },
   tech:       { label:'Tech / Trend extern', bg:'#E8EEF8', col:'#002070', bar:'#003087' },
   networking: { label:'Networking / Event',  bg:'#F0ECF8', col:'#4A2E8C', bar:'#7B68EE' },
+  network:    { label:'Networking / Event',  bg:'#F0ECF8', col:'#4A2E8C', bar:'#7B68EE' },
+  branch:     { label:'Branche / Markt',     bg:'#FFF0E8', col:'#7A3000', bar:'#FF6600' },
   story:      { label:'Persönliche Story',   bg:'#F1EFEA', col:'#4A4A4A', bar:'#6B7A99' },
   brand:      { label:'Brand Story',         bg:'#F1EFEA', col:'#4A4A4A', bar:'#6B7A99' },
   thought:    { label:'Thought Leadership',  bg:'#FFF0E8', col:'#7A3000', bar:'#FF6600' },
@@ -2056,6 +2074,13 @@ function readPosts() {
     if (!cap) return null;
     return { caption:cap, label:inp[1]?.value.trim(), impr:toN(inp[2]?.value), likes:toN(inp[3]?.value), comments:toN(inp[4]?.value), shares:toN(inp[5]?.value), eng:toN(inp[6]?.value), url:inp[7]?.value.trim(), type:sel?.value||'story' };
   }).filter(Boolean).sort((a,b)=>b.impr-a.impr);
+}
+function autoSavePosts() {
+  const c = getClient(ROUTE.clientId);
+  if (!c) return;
+  c.posts = readPosts();
+  c.updatedAt = Date.now();
+  saveApp();
 }
 function savePostsAndDash() {
   const c = getClient(ROUTE.clientId);
