@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-3 -->
+<!-- v20260603-4 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -603,6 +603,32 @@ function saveApp() {
 }
 
 const APP = loadApp();
+
+// ── Seed data: pre-load PAYBACK/Dominik Dommick if no clients exist yet
+(function seedPaybackData() {
+  if (APP.clients && APP.clients.length > 0) return; // don't overwrite existing data
+  const paybackMonthly = {"labels":["Jun 25","Jul 25","Aug 25","Sep 25","Okt 25","Nov 25","Dez 25","Jan 26","Feb 26","Mrz 26","Apr 26","Mai 26","Jun 26"],"impressions":[17874,9363,4208,63803,67830,42019,154526,54329,58040,38940,49931,93292,4833],"engagements":[542,303,204,1704,1542,858,1660,1087,1120,1113,1417,969,120],"followers":[79,45,64,456,234,171,378,203,184,229,543,287,12],"postsPerMonth":[0,0,0,0,0,0,0,0,0,0,0,0,0],"_sortKeys":["2025-06","2025-07","2025-08","2025-09","2025-10","2025-11","2025-12","2026-01","2026-02","2026-03","2026-04","2026-05","2026-06"],"totalFollowers":4487};
+  const paybackPosts = [
+    {caption:'„Ich habe so viele PAYBACK Punkte, der nächste Wasserkocher geht auf meinen Nacken."',label:'Wasserkocher · Dez 2025',impr:88810,likes:0,comments:32,shares:0,eng:381,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_ich-habe-so-viele-payback-punkte-der-n%C3%A4chste-share-7404056454661320706-AcMt',type:'humor'},
+    {caption:'Chinesisches Robotaxi – persönlicher Erlebnisbericht mit Apollo Go von Baidu',label:'Robotaxi (Baidu) · Mai 2026',impr:43385,likes:0,comments:52,shares:0,eng:289,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_ich-bin-jetzt-mehrfach-mit-einem-chinesischen-ugcPost-7462395812904353792-EYY9',type:'tech'},
+    {caption:'Schöner Abend mit Rocco Bräuniger (Amazon), Dr. Saskia Meier-Andrae (eBay) und Philipp Justus (Google)',label:'OMR 100 Dinner · Apr 2026',impr:26296,likes:0,comments:6,shares:0,eng:156,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_sch%C3%B6ner-abend-mit-rocco-br%C3%A4uniger-von-amazon-share-7458058159358865408-xmef',type:'network'},
+    {caption:'„Ich bin jetzt seit über 14 Jahren bei PAYBACK, länger als ich je zuvor bei einem Unternehmen war."',label:'14 Jahre PAYBACK · Okt 2025',impr:19457,likes:0,comments:0,shares:0,eng:335,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_ich-bin-jetzt-seit-%C3%BCber-14-jahren-bei-payback-share-7383399927130787840-kwLT',type:'story'},
+    {caption:'Was sind Deutschlands TOP 3 B2C-Onlineshops? Amazon, eBay, Otto…',label:'TOP 3 Onlineshops · Feb 2026',impr:18188,likes:0,comments:9,shares:0,eng:99,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_was-sind-deutschlands-top-3-b2c-onlineshops-share-7425078171814760449-D1Fg',type:'branch'},
+    {caption:'Über ein Jahr MILES und PAYBACK. Freitag saßen Oliver Mackprang und ich wieder zusammen.',label:'MILES & PAYBACK · Feb 2026',impr:16835,likes:0,comments:16,shares:0,eng:198,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_%C3%BCber-ein-jahrmiles-und-payback-freitag-share-7419049588868939776-GlZH',type:'story'},
+    {caption:'25 Jahre PAYBACK – Wir sind 2025 25 Jahre alt geworden.',label:'25 Jahre PAYBACK · Dez 2025',impr:16209,likes:0,comments:10,shares:0,eng:277,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_25-jahre-payback-wir-sind-2025-25-jahre-share-7401244451303661569-IM2H',type:'story'},
+    {caption:'„Wir verkaufen Schallplatten noch wie früher und machen Streaming gleich dazu."',label:'Schallplatten · Sep 2025',impr:14382,likes:0,comments:0,shares:0,eng:231,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_wir-verkaufen-schallplatten-noch-wie-fr%C3%BCher-share-7370744728075726849-Fivf',type:'story'}
+  ];
+  const id = 'payback2025';
+  APP.clients = [{
+    id,
+    ci:{ client:'PAYBACK', person:'Dominik Dommick', period:'Jun 2025 – Jun 2026', primary:'#003087', accent:'#FFD100', logo:'P', logoImg:'', agency:'Branding People GmbH' },
+    monthly: paybackMonthly,
+    posts: paybackPosts,
+    _loadedFiles: ['AggregateAnalytics_Dominik Dommick_2025-06-04_2026-06-03.xlsx'],
+    updatedAt: Date.now()
+  }];
+  saveApp();
+})();
 
 // ── Auto-fix: repair clients where monthly was saved with 0 labels (broken parse from old code)
 (function repairBadData() {
@@ -1316,17 +1342,23 @@ function processNextInQueue() {
 }
 function smartImport_collect(data, type, filename) {
   // Parse file → result object, push to _multiResults
+  console.log('[Upload] Processing:', filename, 'type:', type);
   try {
     let rows;
     if (type==='csv') {
       rows = parseCSV(data);
+      console.log('[Upload] CSV rows:', rows.length);
     } else {
       const wb = XLSX.read(data, { type:'array', cellDates:false, raw:false });
+      console.log('[Upload] Sheets:', wb.SheetNames.join(', '));
       // ── LinkedIn AggregateAnalytics format detection (ENGAGEMENT, TOP POSTS, FOLLOWERS sheets)
       const liSheets = ['ENGAGEMENT','TOP POSTS','FOLLOWERS','DISCOVERY'];
       if (wb.SheetNames.some(n => liSheets.includes(n))) {
+        console.log('[Upload] LinkedIn AggregateAnalytics format detected');
         const result = parseLinkedInAggregateAnalytics(wb);
+        console.log('[Upload] Parse result:', result ? result.d.labels.length + ' months' : 'null');
         if (result) { result._filename = filename; _multiResults.push(result); return; }
+        console.warn('[Upload] AggregateAnalytics parse returned null, falling back');
       }
       let bestRows=[], bestScore=-1;
       for (const name of wb.SheetNames) {
@@ -1694,6 +1726,7 @@ function showImportPreview(d, mode, months, totalRows, autoPosts, mergeLabel) {
 function confirmImport() {
   if (!_pendingImport) return;
   const { d, autoPosts } = _pendingImport;
+  console.log('[Import] confirmImport called, labels:', d?.labels?.length, d?.labels?.slice(0,3));
   const c = getClient(ROUTE.clientId);
   if (!c) return;
 
