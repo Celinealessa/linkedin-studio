@@ -1,11 +1,25 @@
 <!DOCTYPE html>
-<!-- v20260603-15 -->
+<!-- v20260603-16 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
+<script>
+// Auto cache-buster: fetch latest version silently, reload if newer
+(function(){
+  const MY_V = 'v20260603-16';
+  if (sessionStorage.getItem('_lv') === MY_V) return; // already checked this session
+  sessionStorage.setItem('_lv', MY_V);
+  fetch(location.pathname + '?_t=' + Date.now(), {cache:'no-store'})
+    .then(r => r.text())
+    .then(html => {
+      const m = html.match(/<!-- (v\d{8}-\d+) -->/);
+      if (m && m[1] !== MY_V) { location.reload(true); }
+    }).catch(()=>{});
+})();
+</script>
 <meta http-equiv="Expires" content="0">
 <title>LinkedIn Dashboard · Branding People</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
