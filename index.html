@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-6 -->
+<!-- v20260603-7 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -469,6 +469,8 @@ body {
 .strat-rec { font-size:12px; color:var(--text); font-weight:500; }
 .strat-edit-btn { position:absolute; top:8px; right:8px; background:rgba(255,255,255,0.95); border:1px solid var(--border); border-radius:6px; padding:3px 8px; font-size:10px; cursor:pointer; opacity:0; transition:opacity .15s; font-family:'DM Sans',sans-serif; }
 .strat-card:hover .strat-edit-btn { opacity:1; }
+.strat-card-empty { border:2px dashed #C7CAFF; background:#FAFBFF; }
+.strat-card-empty .strat-edit-btn { opacity:1!important; background:#5B63FE; color:#fff; border-color:#5B63FE; }
 /* ── CONTENT MIX ── */
 .mix-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:1.5rem; }
 .mix-card { background:#fff; border:1px solid var(--border); border-radius:var(--radius); padding:1rem 1.25rem; text-align:center; box-shadow:var(--shadow); position:relative; }
@@ -2172,17 +2174,29 @@ function buildDashHTML(c, ins) {
   }
 
   html += `
-  <div class="section-hd"><span class="section-lbl">Content-Strategie · Was die Daten sagen</span><div class="section-line"></div></div>
+  <div class="section-hd">
+    <span class="section-lbl">Content-Strategie · Was die Daten sagen</span>
+    <div class="section-line"></div>
+    <button onclick="resetRecsToBlank('${c.id}')" style="flex-shrink:0;background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap" title="Alle Karten leeren und selbst ausfüllen">✏️ Leer starten</button>
+  </div>
   <div class="strat-grid">`;
   recs.forEach((r,i) => {
-    html += `<div class="strat-card">
-      <div class="strat-accent" style="background:${r.color}"></div>
-      <button class="strat-edit-btn" onclick="editRec(${i})">✏️ Bearbeiten</button>
-      <div class="strat-badge" style="background:${r.badgeBg};color:${r.badgeCol}">${r.badge}</div>
-      <div class="strat-val" style="color:${r.color}">${r.val}</div>
-      <div class="strat-title">${r.title}</div>
-      <div class="strat-body">${r.body}</div>
-      <div class="strat-rec"><span style="color:${r.color}">→</span> ${r.rec}</div>
+    const isEmpty = !r.title || r.title === '—';
+    html += `<div class="strat-card${isEmpty?' strat-card-empty':''}">
+      <div class="strat-accent" style="background:${r.color||p}"></div>
+      <button class="strat-edit-btn" onclick="editRec(${i})" style="opacity:${isEmpty?'1':''}">✏️ Ausfüllen</button>
+      ${isEmpty
+        ? `<div style="text-align:center;padding:2rem 0;color:var(--muted)">
+             <div style="font-size:28px;margin-bottom:8px">📝</div>
+             <div style="font-size:13px;font-weight:600">Empfehlung ${i+1}</div>
+             <div style="font-size:11px;margin-top:4px">Klicke auf ✏️ Ausfüllen</div>
+           </div>`
+        : `<div class="strat-badge" style="background:${r.badgeBg};color:${r.badgeCol}">${r.badge}</div>
+           <div class="strat-val" style="color:${r.color}">${r.val}</div>
+           <div class="strat-title">${r.title}</div>
+           <div class="strat-body">${r.body}</div>
+           <div class="strat-rec"><span style="color:${r.color}">→</span> ${r.rec}</div>`
+      }
     </div>`;
   });
   html += `</div>
@@ -2431,26 +2445,46 @@ function contrastColor(hex) {
   catch { return '#FFFFFF'; }
 }
 
+function resetRecsToBlank(clientId) {
+  const c = getClient(clientId || ROUTE.clientId); if(!c) return;
+  const blank = {color:'#5B63FE', badgeBg:'#EEEFFE', badgeCol:'#2D3561', badge:'', val:'', title:'—', body:'', rec:''};
+  c.recommendations = [{ ...blank }, { ...blank, color:'#00A86B', badgeBg:'#E8F8F2', badgeCol:'#00624A' }, { ...blank, color:'#F59E0B', badgeBg:'#FFF0D6', badgeCol:'#7A4500' }];
+  saveApp();
+  navigate('dash', ROUTE.clientId);
+}
+
+function setRecColor(hex) {
+  document.getElementById('rec_color').value = hex;
+  document.getElementById('rec_color_pick').value = hex;
+  document.querySelectorAll('#recModal button[onclick^="setRecColor"]').forEach(b => {
+    b.style.border = b.getAttribute('onclick').includes(hex) ? '3px solid #1A1F36' : '3px solid transparent';
+  });
+}
 function editRec(i) {
   const c = getClient(ROUTE.clientId); if(!c) return;
   const r = c.recommendations[i];
   document.getElementById('recIdx').value = i;
   document.getElementById('rec_badge').value = r.badge||'';
   document.getElementById('rec_val').value   = r.val||'';
-  document.getElementById('rec_title').value = r.title||'';
+  document.getElementById('rec_title').value = r.title === '—' ? '' : (r.title||'');
   document.getElementById('rec_body').value  = r.body||'';
   document.getElementById('rec_rec').value   = r.rec||'';
+  setRecColor(r.color||'#5B63FE');
   openModal('recModal');
 }
 function saveRec() {
   const c = getClient(ROUTE.clientId); if(!c) return;
   const i = parseInt(document.getElementById('recIdx').value);
+  const color = document.getElementById('rec_color').value || '#5B63FE';
+  const title = document.getElementById('rec_title').value.trim() || '—';
   c.recommendations[i] = { ...c.recommendations[i],
     badge: document.getElementById('rec_badge').value,
     val:   document.getElementById('rec_val').value,
-    title: document.getElementById('rec_title').value,
+    title,
     body:  document.getElementById('rec_body').value,
     rec:   document.getElementById('rec_rec').value,
+    color,
+    badgeBg: color+'22', badgeCol: color,
   };
   c.updatedAt = Date.now(); saveApp();
   closeModal('recModal'); navigate('dash', ROUTE.clientId);
@@ -2486,15 +2520,30 @@ function saveMix() {
 renderApp();
 </script>
 <div class="overlay" id="recModal">
-  <div class="modal">
-    <div class="modal-h"><h3>✏️ Empfehlung bearbeiten</h3><button class="modal-x" onclick="closeModal('recModal')">✕</button></div>
-    <div class="modal-b">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-h"><h3>✏️ Empfehlung schreiben</h3><button class="modal-x" onclick="closeModal('recModal')">✕</button></div>
+    <div class="modal-b" style="display:flex;flex-direction:column;gap:12px">
       <input type="hidden" id="recIdx">
-      <div class="form-group"><label class="form-label">Badge (z.B. Reichweite)</label><input class="form-input" id="rec_badge"></div>
-      <div class="form-group"><label class="form-label">Kennzahl (z.B. Ø 67K Impr.)</label><input class="form-input" id="rec_val"></div>
-      <div class="form-group"><label class="form-label">Titel</label><input class="form-input" id="rec_title"></div>
-      <div class="form-group"><label class="form-label">Beschreibung</label><textarea class="form-input" id="rec_body" rows="4" style="resize:vertical"></textarea></div>
-      <div class="form-group"><label class="form-label">Empfehlung (der Text nach dem →)</label><input class="form-input" id="rec_rec"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group" style="margin:0"><label class="form-label">🏷️ Badge (Thema)</label><input class="form-input" id="rec_badge" placeholder="z.B. Reichweite"></div>
+        <div class="form-group" style="margin:0"><label class="form-label">📊 Kennzahl</label><input class="form-input" id="rec_val" placeholder="z.B. +42% Wachstum"></div>
+      </div>
+      <div class="form-group" style="margin:0"><label class="form-label">📌 Titel</label><input class="form-input" id="rec_title" placeholder="Kurze Überschrift der Empfehlung"></div>
+      <div class="form-group" style="margin:0"><label class="form-label">📝 Beschreibung</label><textarea class="form-input" id="rec_body" rows="5" style="resize:vertical;line-height:1.6" placeholder="Erkläre die Analyse und den Hintergrund dieser Empfehlung…"></textarea></div>
+      <div class="form-group" style="margin:0"><label class="form-label">→ Konkrete Maßnahme</label><input class="form-input" id="rec_rec" placeholder="Was soll der Creator konkret tun?"></div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">🎨 Akzentfarbe</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="setRecColor('#5B63FE')" style="width:28px;height:28px;border-radius:50%;background:#5B63FE;border:3px solid transparent;cursor:pointer" title="Blau"></button>
+          <button onclick="setRecColor('#00A86B')" style="width:28px;height:28px;border-radius:50%;background:#00A86B;border:3px solid transparent;cursor:pointer" title="Grün"></button>
+          <button onclick="setRecColor('#F59E0B')" style="width:28px;height:28px;border-radius:50%;background:#F59E0B;border:3px solid transparent;cursor:pointer" title="Gelb"></button>
+          <button onclick="setRecColor('#E03B3B')" style="width:28px;height:28px;border-radius:50%;background:#E03B3B;border:3px solid transparent;cursor:pointer" title="Rot"></button>
+          <button onclick="setRecColor('#7B68EE')" style="width:28px;height:28px;border-radius:50%;background:#7B68EE;border:3px solid transparent;cursor:pointer" title="Lila"></button>
+          <button onclick="setRecColor('#FF6600')" style="width:28px;height:28px;border-radius:50%;background:#FF6600;border:3px solid transparent;cursor:pointer" title="Orange"></button>
+          <input type="color" id="rec_color_pick" value="#5B63FE" oninput="setRecColor(this.value)" style="width:28px;height:28px;border-radius:50%;border:none;cursor:pointer;padding:0" title="Eigene Farbe">
+        </div>
+        <input type="hidden" id="rec_color" value="#5B63FE">
+      </div>
     </div>
     <div class="modal-f">
       <button class="btn" onclick="closeModal('recModal')">Abbrechen</button>
