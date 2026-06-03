@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-11 -->
+<!-- v20260603-12 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -619,6 +619,7 @@ const APP = loadApp();
     {caption:'25 Jahre PAYBACK – Wir sind 2025 25 Jahre alt geworden.',label:'25 Jahre PAYBACK · Dez 2025',impr:16209,likes:0,comments:10,shares:0,eng:277,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_25-jahre-payback-wir-sind-2025-25-jahre-share-7401244451303661569-IM2H',type:'story'},
     {caption:'„Wir verkaufen Schallplatten noch wie früher und machen Streaming gleich dazu."',label:'Schallplatten · Sep 2025',impr:14382,likes:0,comments:0,shares:0,eng:231,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_wir-verkaufen-schallplatten-noch-wie-fr%C3%BCher-share-7370744728075726849-Fivf',type:'story'}
   ];
+  const paybackFlopPosts = []; // populated automatically on Excel upload
   if (!APP.clients) APP.clients = [];
   // Finde oder erstelle PAYBACK Client — überschreibe immer monthly+posts (Daten sollen aktuell sein)
   let idx = APP.clients.findIndex(c => c.id === 'payback2025');
@@ -630,6 +631,7 @@ const APP = loadApp();
     ci: { client:'PAYBACK', person:'Dominik Dommick', period:'Jun 2025 – Jun 2026', primary:'#003087', accent:'#FFD100', logo:'P', logoImg:'', agency:'Branding People GmbH', ...(base.ci||{}) },
     monthly: paybackMonthly,
     posts: (base.posts && base.posts.length > 0) ? base.posts : paybackPosts,
+    flopPosts: (base.flopPosts && base.flopPosts.length > 0) ? base.flopPosts : paybackFlopPosts,
     splitLabel: base.splitLabel || 'Sep 25',
     _loadedFiles: ['AggregateAnalytics_Dominik Dommick_2025-06-04_2026-06-03.xlsx'],
     updatedAt: Date.now()
@@ -1470,6 +1472,7 @@ function parseLinkedInAggregateAnalytics(wb) {
 
   // TOP POSTS sheet — two side-by-side tables merged by URL
   const autoPosts = [];
+  const autoFlopPosts = [];
   if (topWs && d.labels.length > 0) {
     const topRows = XLSX.utils.sheet_to_json(topWs, {header:1, defval:'', raw:false});
     // Row 2: ["Post URL","Post Publish Date","Engagements","","Post URL","Post Publish Date","Impressions"]
@@ -1490,18 +1493,22 @@ function parseLinkedInAggregateAnalytics(wb) {
         postMap.get(url2).impr = Math.max(postMap.get(url2).impr, parseNum(row[6]));
       }
     }
-    [...postMap.values()]
-      .sort((a,b) => b.impr - a.impr || b.eng - a.eng)
-      .slice(0, 10)
-      .forEach(p => {
+    const allSorted = [...postMap.values()].sort((a,b) => b.impr - a.impr || b.eng - a.eng);
+    allSorted.slice(0, 10).forEach(p => {
         const caption = extractCaptionFromUrl(p.url);
         autoPosts.push({impr:p.impr, eng:p.eng, likes:0, comm:0, shar:0,
           caption: caption || p.url.slice(-60), date:p.date, url:p.url});
       });
+    // Flop posts: bottom 5 by impressions (only posts with impr > 0)
+    const withImpr = allSorted.filter(p => p.impr > 0);
+    autoFlopPosts.push(...withImpr.slice(-5).reverse().map(p => ({
+      impr:p.impr, eng:p.eng, likes:0, comm:0, shar:0,
+      caption: extractCaptionFromUrl(p.url) || p.url.slice(-60), date:p.date, url:p.url
+    })));
   }
 
   if (!d.labels.length) return null;
-  return { d, mode:'post-level', months:d.labels.length, totalRows:sorted.length, autoPosts };
+  return { d, mode:'post-level', months:d.labels.length, totalRows:sorted.length, autoPosts, autoFlopPosts };
 }
 function smartImport_fromCSV(text) { _multiResults=[]; smartImport_collect(text,'csv','datei'); finalizeMultiImport(); }
 
@@ -1669,14 +1676,14 @@ function finalizeMultiImport() {
   if (!finalResult) { showToast('Zusammenführen fehlgeschlagen','warn'); return; }
 
   // Direkt speichern — sofort, kein extra Klick nötig
-  _pendingImport = { d: finalResult.d, autoPosts: finalResult.autoPosts || [] };
+  _pendingImport = { d: finalResult.d, autoPosts: finalResult.autoPosts || [], autoFlopPosts: finalResult.autoFlopPosts || [] };
   confirmImport();
 }
 
 // ── Preview before confirming
 let _pendingImport = null;
 function showImportPreview(d, mode, months, totalRows, autoPosts, mergeLabel) {
-  _pendingImport = { d, autoPosts };
+  _pendingImport = { d, autoPosts, autoFlopPosts: arguments[5] || [] };
   const modeLabel = mode==='merged'
     ? `<span style="color:var(--success);font-weight:600">✅ ${mergeLabel ? mergeLabel.split(' + ').length+' Dateien zusammengeführt' : 'Zusammengeführt'}</span> — ${totalRows} Zeilen → ${months} Zeiträume`
     : mode==='post-level'
@@ -1734,7 +1741,7 @@ function showImportPreview(d, mode, months, totalRows, autoPosts, mergeLabel) {
 
 function confirmImport() {
   if (!_pendingImport) return;
-  const { d, autoPosts } = _pendingImport;
+  const { d, autoPosts, autoFlopPosts } = _pendingImport;
   console.log('[Import] confirmImport called, labels:', d?.labels?.length, d?.labels?.slice(0,3));
   const c = getClient(ROUTE.clientId);
   if (!c) return;
@@ -1756,6 +1763,15 @@ function confirmImport() {
       shares: p.shar || 0, eng: p.eng || 0, url: p.url || '', type: 'story'
     }));
     c.posts = [...(c.posts||[]), ...newPosts].sort((a,b)=>b.impr-a.impr).slice(0,10);
+  }
+  if (autoFlopPosts && autoFlopPosts.length) {
+    const existingFlop = new Set((c.flopPosts||[]).map(p=>p.caption));
+    const newFlops = autoFlopPosts.filter(p => !existingFlop.has(p.caption)).map(p => ({
+      caption: p.caption, label: p.date || '',
+      impr: p.impr, likes: p.likes || 0, comments: p.comm || 0,
+      shares: p.shar || 0, eng: p.eng || 0, url: p.url || '', type: 'story'
+    }));
+    c.flopPosts = [...(c.flopPosts||[]), ...newFlops].sort((a,b)=>a.impr-b.impr).slice(0,5);
   }
   const newNames = (_multiResults||[]).map(r => r._filename).filter(Boolean);
   if (!c._loadedFiles) c._loadedFiles = [];
@@ -1893,6 +1909,32 @@ function openPostOverlay(idx) {
       Auf LinkedIn öffnen
     </a>` : ''}`;
 
+  document.getElementById('postOverlay').classList.add('open');
+}
+function openFlopPostOverlay(idx) {
+  const c = getClient(ROUTE.clientId);
+  if (!c || !c.flopPosts || !c.flopPosts[idx]) return;
+  const post = c.flopPosts[idx];
+  const tm = TYPE_META[post.type] || TYPE_META.story;
+  const metrics = [];
+  if (post.impr)     metrics.push({val:post.impr.toLocaleString('de-DE'),    lbl:'Impressionen', icon:'👁️'});
+  if (post.eng)      metrics.push({val:post.eng.toLocaleString('de-DE'),     lbl:'Engagements',  icon:'⚡'});
+  if (post.likes)    metrics.push({val:post.likes.toLocaleString('de-DE'),   lbl:'Likes',        icon:'👍'});
+  if (post.comments) metrics.push({val:post.comments.toLocaleString('de-DE'),lbl:'Kommentare',   icon:'💬'});
+  if (post.shares)   metrics.push({val:post.shares.toLocaleString('de-DE'),  lbl:'Reposts',      icon:'🔁'});
+  if (post.impr && post.eng) {
+    const rate = ((post.eng / post.impr)*100).toFixed(2).replace('.',',');
+    metrics.push({val:rate+'%', lbl:'Engagement-Rate', icon:'📊'});
+  }
+  const metricsHtml = metrics.map(m => `<div class="po-metric"><div style="font-size:18px;margin-bottom:2px">${m.icon}</div><div class="po-metric-val">${m.val}</div><div class="po-metric-lbl">${m.lbl}</div></div>`).join('');
+  const dateInfo = post.label ? `<span style="background:#FFF0F0;color:#C0392B;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600">${post.label}</span>` : '';
+  const typeInfo = `<span style="background:${tm.bg};color:${tm.col};padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600">${tm.label}</span>`;
+  document.getElementById('postOverlayContent').innerHTML = `
+    <div class="po-rank" style="color:#C0392B">📉 Flop-Post #${idx+1}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${dateInfo}${typeInfo}</div>
+    <div class="po-caption">${post.caption||'—'}</div>
+    ${metrics.length ? `<div class="po-metrics">${metricsHtml}</div>` : ''}
+    ${post.url ? `<a href="${post.url}" target="_blank" class="po-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"/></svg>Auf LinkedIn öffnen</a>` : ''}`;
   document.getElementById('postOverlay').classList.add('open');
 }
 function closePostOverlay() {
@@ -2172,6 +2214,31 @@ function buildDashHTML(c, ins) {
     <div class="chart-title">Impressionen Top-Posts — visualisiert</div>
     <div style="position:relative;height:${Math.min(400,c.posts.length*44+60)}px"><canvas id="cPosts"></canvas></div>
   </div>`;
+  }
+
+  if (c.flopPosts?.length) {
+    html += `
+  <div class="section-hd"><span class="section-lbl">📉 Flop-Posts · Schwächste Beiträge aus dem Zeitraum</span><div class="section-line"></div></div>
+  <div class="chart-card" style="margin-bottom:1.5rem">
+    <div class="chart-title">Bottom ${c.flopPosts.length} Posts nach Impressionen · Quelle: LinkedIn Analytics</div>
+    <div class="chart-sub">Diese Posts haben die geringste Reichweite erzielt — wichtig für Content-Learnings</div>
+    <div class="posts-list">`;
+    c.flopPosts.forEach((post,i) => {
+      const tm = TYPE_META[post.type]||TYPE_META.story;
+      const metaParts = [];
+      if (post.label) metaParts.push(post.label);
+      if (post.likes) metaParts.push('👍 '+post.likes.toLocaleString('de-DE'));
+      if (post.comments) metaParts.push('💬 '+post.comments.toLocaleString('de-DE'));
+      if (post.shares) metaParts.push('🔁 '+post.shares.toLocaleString('de-DE'));
+      if (post.eng && !post.likes) metaParts.push('⚡ '+post.eng.toLocaleString('de-DE')+' Engagements');
+      html += `<div class="post-row" onclick="openFlopPostOverlay(${i})" style="cursor:pointer;opacity:0.85" title="Details anzeigen">
+        <div class="post-rank" style="background:#FFF0F0;color:#C0392B;border-color:#F5C6CB">#${i+1}</div>
+        <div style="flex:1;min-width:0"><div class="post-cap">${post.caption||'—'}${post.url?' 🔗':''}</div><div class="post-meta">${metaParts.join(' · ')}</div></div>
+        <div class="post-pill" style="background:${tm.bg};color:${tm.col}">${tm.label}</div>
+        <div class="post-impr" style="color:#C0392B">${fmt(post.impr)}<div style="font-size:9px;color:var(--muted);font-weight:400">Impressionen</div></div>
+      </div>`;
+    });
+    html += `</div></div>`;
   }
 
   html += `
