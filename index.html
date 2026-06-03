@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-13 -->
+<!-- v20260603-14 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -1053,6 +1053,11 @@ function setStep(step) {
   document.querySelectorAll('.step-tab').forEach((t,i) => {
     t.classList.toggle('active', ['ci','data','posts'][i]===step);
   });
+  // Restore posts rows whenever posts step is shown
+  if (step === 'posts') {
+    const c = getClient(ROUTE.clientId);
+    if (c) restorePostsRows(c.posts || []);
+  }
 }
 
 // ── Live CI preview
@@ -1538,7 +1543,7 @@ function smartImport_fromCSV(text) { _multiResults=[]; smartImport_collect(text,
 
 function smartImport(rows) {
   const result = smartImport_parse(rows);
-  if (result) showImportPreview(result.d, result.mode, result.months, result.totalRows, result.autoPosts);
+  if (result) showImportPreview(result.d, result.mode, result.months, result.totalRows, result.autoPosts, null, result.autoFlopPosts);
 }
 
 // Parse rows → result object (no side effects)
@@ -1706,8 +1711,8 @@ function finalizeMultiImport() {
 
 // ── Preview before confirming
 let _pendingImport = null;
-function showImportPreview(d, mode, months, totalRows, autoPosts, mergeLabel) {
-  _pendingImport = { d, autoPosts, autoFlopPosts: arguments[5] || [] };
+function showImportPreview(d, mode, months, totalRows, autoPosts, mergeLabel, autoFlopPosts) {
+  _pendingImport = { d, autoPosts, autoFlopPosts: autoFlopPosts || [] };
   const modeLabel = mode==='merged'
     ? `<span style="color:var(--success);font-weight:600">✅ ${mergeLabel ? mergeLabel.split(' + ').length+' Dateien zusammengeführt' : 'Zusammengeführt'}</span> — ${totalRows} Zeilen → ${months} Zeiträume`
     : mode==='post-level'
