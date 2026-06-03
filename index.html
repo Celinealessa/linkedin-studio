@@ -1236,7 +1236,7 @@ function smartImport(rows) {
     engagements: findCol(header, ['interaktion','engagement','gesamt-engagement']),
     engRate:     findCol(header, ['interaktionsrate','engagement rate','engagementrate']),
     postsCount:  findCol(header, ['anzahl','post count','beitragsanzahl']),
-    caption:     findCol(header, ['beitragstext','beitragstitel','caption','text','inhalt','title','beschreibung','post-text']),
+    caption:     findCol(header, ['beitragstext','beitragstitel','caption','text','inhalt','title','beschreibung','post-text','beitrag','post text','nachricht','message']),
     url:         findCol(header, ['url','link','beitrags-url']),
   };
   if (ci.date < 0) ci.date = 0;
@@ -1287,7 +1287,8 @@ function importPostLevel(dataRows, ci) {
     m.followers   += foll;
     m.engagements += eng;
     m.posts++;
-    if (cap || impr>0) m.rawPosts.push({ impr, likes, comm, shar, eng, caption:cap, date:lbl });
+    const url = ci.url>=0 ? String(row[ci.url]||'').trim() : '';
+    if (cap || impr>0) m.rawPosts.push({ impr, likes, comm, shar, eng, caption:cap, date:lbl, url });
   });
 
   const sorted = [...monthMap.values()].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
@@ -1383,7 +1384,8 @@ function confirmImport() {
   if (autoPosts.length && (!c.posts || !c.posts.length)) {
     c.posts = autoPosts.map(p => ({
       caption: p.caption, label: p.date || '',
-      impr: p.impr, comments: p.comm || 0, type: 'story'
+      impr: p.impr, likes: p.likes || 0, comments: p.comm || 0,
+      shares: p.shar || 0, eng: p.eng || 0, url: p.url || '', type: 'story'
     }));
   }
   c.updatedAt = Date.now();
@@ -1652,10 +1654,10 @@ function buildDashHTML(c, ins) {
 
   if (c.posts?.length) {
     html += `
-  <div class="section-hd"><span class="section-lbl">Top-Posts nach Impressionen</span><div class="section-line"></div></div>
+  <div class="section-hd"><span class="section-lbl">🏆 Top-Posts · Beste Beiträge aus dem Zeitraum</span><div class="section-line"></div></div>
   <div class="chart-card" style="margin-bottom:14px">
-    <div class="chart-title">Beste Posts · Quelle: LinkedIn Analytics</div>
-    <div class="chart-sub">Farbe = Content-Typ</div>
+    <div class="chart-title">Top ${c.posts.length} Posts nach Impressionen · Quelle: LinkedIn Analytics</div>
+    <div class="chart-sub">Alle Metriken direkt aus dem Export · Farbe = Content-Typ</div>
     <div class="legend" style="margin-bottom:14px">
       <div class="legend-item"><div class="legend-dot" style="background:#00A86B"></div>Humor / Persönlich</div>
       <div class="legend-item"><div class="legend-dot" style="background:#5B63FE"></div>Tech / Trend</div>
@@ -1667,11 +1669,17 @@ function buildDashHTML(c, ins) {
     c.posts.forEach((post,i) => {
       const tm = TYPE_META[post.type]||TYPE_META.story;
       const rc = i===0?'g':i===1?'s':i===2?'b':'';
+      const metaParts = [];
+      if (post.label) metaParts.push(post.label);
+      if (post.likes) metaParts.push('👍 '+post.likes.toLocaleString('de-DE'));
+      if (post.comments) metaParts.push('💬 '+post.comments.toLocaleString('de-DE'));
+      if (post.shares) metaParts.push('🔁 '+post.shares.toLocaleString('de-DE'));
+      if (post.eng && !post.likes) metaParts.push('⚡ '+post.eng.toLocaleString('de-DE')+' Engagements');
       html += `<div class="post-row">
         <div class="post-rank ${rc}">#${i+1}</div>
-        <div><div class="post-cap">${post.caption||'—'}</div><div class="post-meta">${post.label||''}${post.comments?' · '+post.comments+' Kommentare':''}</div></div>
+        <div style="flex:1;min-width:0"><div class="post-cap">${post.url?`<a href="${post.url}" target="_blank" style="color:inherit;text-decoration:none" title="Post auf LinkedIn öffnen">${post.caption||'—'} 🔗</a>`:(post.caption||'—')}</div><div class="post-meta">${metaParts.join(' · ')}</div></div>
         <div class="post-pill" style="background:${tm.bg};color:${tm.col}">${tm.label}</div>
-        <div class="post-impr" style="color:${p}">${fmt(post.impr)}</div>
+        <div class="post-impr" style="color:${p}">${fmt(post.impr)}<div style="font-size:9px;color:var(--muted);font-weight:400">Impressionen</div></div>
       </div>`;
     });
     html += `</div></div>
