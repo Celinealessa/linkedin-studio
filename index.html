@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-12 -->
+<!-- v20260603-13 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -1441,10 +1441,34 @@ function parseLinkedInAggregateAnalytics(wb) {
   let totalFollowers = 0;
   if (follWs) {
     const follRows = XLSX.utils.sheet_to_json(follWs, {header:1, defval:'', raw:false});
-    totalFollowers = parseNum(follRows[0]?.[1]) || 0; // row 0: ["Total followers on DATE","4484"]
+    // Find total followers — scan first 6 rows, all columns
+    for (let i = 0; i < Math.min(6, follRows.length) && !totalFollowers; i++) {
+      const row = follRows[i];
+      for (let j = 0; j < row.length; j++) {
+        const lbl = String(row[j]||'').toLowerCase();
+        if (lbl.includes('total') || lbl.includes('gesamt') || lbl.includes('follower')) {
+          const val = parseNum(row[j+1]);
+          if (val > 0) { totalFollowers = val; break; }
+        }
+      }
+    }
+    // Find date header row (EN: "date", DE: "datum") — scan all rows up to 15
     let dataStart = -1;
-    for (let i = 0; i < Math.min(5, follRows.length); i++) {
-      if (String(follRows[i][0]||'').toLowerCase().includes('date')) { dataStart = i+1; break; }
+    let follCol = 1; // default: new followers in column 1
+    for (let i = 0; i < Math.min(15, follRows.length); i++) {
+      const row = follRows[i];
+      const c0 = String(row[0]||'').toLowerCase();
+      if (c0.includes('date') || c0.includes('datum')) {
+        dataStart = i + 1;
+        // Find the column with "new" or "neu" or "follower"
+        for (let j = 1; j < row.length; j++) {
+          const h = String(row[j]||'').toLowerCase();
+          if (h.includes('new') || h.includes('neu') || h.includes('follower') || h.includes('abonnent')) {
+            follCol = j; break;
+          }
+        }
+        break;
+      }
     }
     if (dataStart >= 0) {
       for (let i = dataStart; i < follRows.length; i++) {
@@ -1453,7 +1477,7 @@ function parseLinkedInAggregateAnalytics(wb) {
         if (!parsed) continue;
         const key = `${parsed.year}-${String(parsed.month+1).padStart(2,'0')}`;
         const m = monthMap.get(key);
-        if (m) m.newFollowers += parseNum(row[1]);
+        if (m) m.newFollowers += parseNum(row[follCol]);
       }
     }
   }
