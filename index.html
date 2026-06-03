@@ -438,8 +438,9 @@ body {
 ══════════════════════════════════════════ */
 .toast { position:fixed; bottom:24px; right:24px; z-index:9999; background:var(--app-blue); color:#fff; padding:10px 18px; border-radius:9px; font-size:13px; font-weight:500; box-shadow:0 4px 20px rgba(0,0,0,0.2); transform:translateY(80px); opacity:0; transition:all 0.3s; pointer-events:none; }
 .toast.show { transform:translateY(0); opacity:1; }
-.toast.ok { background:var(--success); }
+.toast.ok, .toast.success { background:var(--success); }
 .toast.warn { background:var(--warn); }
+.toast.info { background:#5B63FE; }
 
 /* ── STRATEGY CARDS ── */
 .strat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:1.5rem; }
@@ -821,27 +822,35 @@ function renderEdit(container) {
 
       <!-- STATUS: noch keine Daten -->
       <div id="uploadBox" style="${c.monthly?'display:none':''}">
+        <!-- Hidden file input OUTSIDE the clickable zone to avoid click-loop -->
+        <input type="file" id="xlsFile" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleMultiFiles(this.files)">
+
         <div style="
           border:3px dashed #5B63FE;border-radius:16px;
           background:linear-gradient(135deg,#F4F5FF,#ECEEFF);
           padding:3rem 2rem;text-align:center;cursor:pointer;
-          transition:all .2s" id="uploadZone"
-          onclick="document.getElementById('xlsFile').click()"
-          ondragover="event.preventDefault();this.style.background='#E0E2FF'"
-          ondragleave="this.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)'"
-          ondrop="event.preventDefault();this.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)';handleMultiFiles(event.dataTransfer.files)">
-          <div style="font-size:56px;margin-bottom:12px">📂</div>
-          <div style="font-size:20px;font-weight:700;color:#5B63FE;margin-bottom:6px">Excel-Dateien hochladen</div>
-          <div style="font-size:14px;color:#6E7A9F;margin-bottom:8px">Hier klicken oder Dateien reinziehen — <strong>mehrere gleichzeitig möglich!</strong></div>
-          <div style="font-size:12px;color:#8B93FF;margin-bottom:16px">z.B. Beitragsanalyse + Follower-Daten + mehrere Zeiträume</div>
-          <div style="display:inline-flex;gap:8px">
-            <span style="background:#5B63FE;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.xlsx</span>
-            <span style="background:#5B63FE;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.xls</span>
-            <span style="background:#8B93FF;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.csv</span>
+          transition:all .2s" id="uploadZone">
+          <div id="uploadZoneInner">
+            <div style="font-size:56px;margin-bottom:12px">📂</div>
+            <div style="font-size:20px;font-weight:700;color:#5B63FE;margin-bottom:6px">Excel / CSV hochladen</div>
+            <div style="font-size:14px;color:#6E7A9F;margin-bottom:8px">Hier klicken oder Dateien reinziehen</div>
+            <div style="font-size:12px;color:#8B93FF;margin-bottom:16px"><strong>Mehrere Dateien gleichzeitig möglich</strong> — LinkedIn Export + Favikon CSV</div>
+            <div style="display:inline-flex;gap:8px;margin-bottom:18px">
+              <span style="background:#5B63FE;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.xlsx</span>
+              <span style="background:#5B63FE;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.xls</span>
+              <span style="background:#8B93FF;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.csv</span>
+            </div>
+            <div>
+              <button class="btn btn-primary" onclick="event.stopPropagation();document.getElementById('xlsFile').click()">📂 Dateien auswählen</button>
+            </div>
           </div>
-          <input type="file" id="xlsFile" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleMultiFiles(this.files)">
+          <div id="uploadZoneLoading" style="display:none">
+            <div style="font-size:40px;margin-bottom:12px">⏳</div>
+            <div style="font-size:16px;font-weight:600;color:#5B63FE" id="uploadLoadingText">Dateien werden geladen…</div>
+          </div>
         </div>
-        <div style="text-align:center;margin-top:12px;font-size:12px;color:#6E7A9F">
+
+        <div style="text-align:center;margin-top:10px;font-size:12px;color:#6E7A9F">
           Kein passendes Format?
           <button class="btn btn-ghost btn-sm" style="font-size:12px" onclick="downloadTemplate('post')">Beispiel-Vorlage herunterladen</button>
         </div>
@@ -908,6 +917,9 @@ function renderEdit(container) {
         </div>
       </div>
 
+      <!-- Import Preview — shown after file parse, before confirming -->
+      <div id="importPreview" style="display:none;margin-bottom:12px"></div>
+
       <div style="display:flex;justify-content:space-between">
         <button class="btn" onclick="setStep('ci')">← Zurück</button>
         <button class="btn btn-primary" onclick="saveDataAndNext()">Weiter → Top-Posts →</button>
@@ -946,16 +958,19 @@ function renderEdit(container) {
   restorePostsRows(c.posts || []);
   updateSplitSelect(c.monthly?.labels || [], c.splitLabel);
 
-  // Setup drag&drop on upload zone
+  // Setup drag&drop + click on upload zone
   const uz = document.getElementById('uploadZone');
   if (uz) {
-    uz.addEventListener('dragover', e => { e.preventDefault(); uz.style.background='#EEF0FF'; uz.style.borderColor='var(--app-accent2)'; });
-    uz.addEventListener('dragleave', () => { uz.style.background='#fff'; uz.style.borderColor='var(--app-accent)'; });
+    uz.addEventListener('click', e => {
+      if (e.target.tagName === 'BUTTON') return; // button handles its own click
+      document.getElementById('xlsFile').click();
+    });
+    uz.addEventListener('dragover', e => { e.preventDefault(); uz.style.background='#E0E2FF'; uz.style.borderStyle='solid'; });
+    uz.addEventListener('dragleave', () => { uz.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)'; uz.style.borderStyle='dashed'; });
     uz.addEventListener('drop', e => {
       e.preventDefault();
-      uz.style.background='#fff'; uz.style.borderColor='var(--app-accent)';
-      const file = e.dataTransfer.files[0];
-      if (file) processDataFile(file);
+      uz.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)'; uz.style.borderStyle='dashed';
+      if (e.dataTransfer.files.length) handleMultiFiles(e.dataTransfer.files);
     });
   }
   // Restore split section visibility if data exists
@@ -1203,6 +1218,37 @@ function handleDataFile(input) { if (input.files[0]) handleMultiFiles(input.file
 function handleDataFile2(file) { if (file) handleMultiFiles([file]); }
 
 // Multi-file handler — processes all files and merges results
+// ── Proper CSV parser — handles quoted fields with commas/newlines (e.g. Favikon captions)
+function parseCSV(text) {
+  // Detect separator: semicolon wins if more frequent than comma outside quotes
+  const testLine = text.split('\n')[0] || '';
+  let semiCount = 0, commaCount = 0, inQ = false;
+  for (const ch of testLine) {
+    if (ch === '"') inQ = !inQ;
+    else if (!inQ) { if (ch===';') semiCount++; else if (ch===',') commaCount++; }
+  }
+  const sep = semiCount > commaCount ? ';' : ',';
+
+  const rows = [];
+  let row = [], field = '', inQuote = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (inQuote && text[i+1] === '"') { field += '"'; i++; }   // escaped quote ""
+      else inQuote = !inQuote;
+    } else if (ch === sep && !inQuote) {
+      row.push(field.trim()); field = '';
+    } else if ((ch === '\n' || (ch === '\r' && text[i+1] === '\n')) && !inQuote) {
+      if (ch === '\r') i++;
+      row.push(field.trim()); rows.push(row); row = []; field = '';
+    } else {
+      field += ch;
+    }
+  }
+  if (field || row.length) { row.push(field.trim()); rows.push(row); }
+  return rows.filter(r => r.some(c => c !== ''));
+}
+
 let _multiQueue = [], _multiResults = [], _mergeMode = false;
 function handleMultiFiles(fileList, merge) {
   const files = Array.from(fileList);
@@ -1210,8 +1256,20 @@ function handleMultiFiles(fileList, merge) {
   _mergeMode = !!merge;
   _multiQueue = files.slice();
   _multiResults = [];
-  showToast(`📂 ${files.length} Datei${files.length>1?'en':''} wird${files.length>1?'':'d'} geladen…`, 'info');
+  // Show loading state in upload zone
+  const inner = document.getElementById('uploadZoneInner');
+  const loading = document.getElementById('uploadZoneLoading');
+  const loadingText = document.getElementById('uploadLoadingText');
+  if (inner) inner.style.display = 'none';
+  if (loading) loading.style.display = '';
+  if (loadingText) loadingText.textContent = `${files.length} Datei${files.length>1?'en':''} wird${files.length>1?'':'d'} eingelesen…`;
   processNextInQueue();
+}
+function resetUploadZone() {
+  const inner = document.getElementById('uploadZoneInner');
+  const loading = document.getElementById('uploadZoneLoading');
+  if (inner) inner.style.display = '';
+  if (loading) loading.style.display = 'none';
 }
 function processNextInQueue() {
   if (!_multiQueue.length) { finalizeMultiImport(); return; }
@@ -1232,8 +1290,7 @@ function smartImport_collect(data, type, filename) {
   try {
     let rows;
     if (type==='csv') {
-      const sep = (data.match(/;/g)||[]).length > (data.match(/,/g)||[]).length ? ';' : ',';
-      rows = data.trim().split(/\r?\n/).map(l => l.split(sep).map(s => s.replace(/^["']|["']$/g,'').trim()));
+      rows = parseCSV(data);
     } else {
       const wb = XLSX.read(data, { type:'array', cellDates:false, raw:false });
       let bestRows=[], bestScore=-1;
@@ -1259,8 +1316,8 @@ function smartImport_collect(data, type, filename) {
 }
 
 function processDataFile(file) { handleMultiFiles([file]); }
-function smartImport_fromXLSX(buf) { smartImport_collect(buf,'xlsx','datei'); finalizeMultiImport(); }
-function smartImport_fromCSV(text) { smartImport_collect(text,'csv','datei'); finalizeMultiImport(); }
+function smartImport_fromXLSX(buf) { _multiResults=[]; smartImport_collect(buf,'xlsx','datei'); finalizeMultiImport(); }
+function smartImport_fromCSV(text) { _multiResults=[]; smartImport_collect(text,'csv','datei'); finalizeMultiImport(); }
 
 function smartImport(rows) {
   const result = smartImport_parse(rows);
@@ -1411,7 +1468,8 @@ function mergeImportResults(results) {
 
 // ── Called when all files in queue are processed
 function finalizeMultiImport() {
-  if (!_multiResults.length) { showToast('Keine Daten erkannt','warn'); return; }
+  resetUploadZone();
+  if (!_multiResults.length) { showToast('Keine Daten erkannt — Format prüfen','warn'); return; }
 
   let finalResult;
   if (_mergeMode && _pendingImport) {
@@ -1538,9 +1596,13 @@ function confirmImport() {
       <td style="padding:7px 14px;text-align:right">${d.postsPerMonth[i]||0}</td>
     </tr>`).join('');
 
+  // Hide import preview
+  const ip = document.getElementById('importPreview');
+  if (ip) { ip.style.display = 'none'; ip.innerHTML = ''; }
+
   // Fill split select
   updateSplitSelect(d.labels, c.splitLabel||'');
-  showToast(`${d.labels.length} Monate importiert 🎉`, 'ok');
+  showToast(`✅ ${d.labels.length} Monate importiert!`, 'ok');
 }
 
 function refreshFileChips() {
