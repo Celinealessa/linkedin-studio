@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-2 -->
+<!-- v20260603-3 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -1417,23 +1417,14 @@ function parseLinkedInAggregateAnalytics(wb) {
 
   const sorted = [...monthMap.values()].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
 
-  // Build cumulative followers (work backwards from known total)
-  if (totalFollowers > 0 && sorted.length > 0) {
-    let cumul = totalFollowers;
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      sorted[i].followers = Math.round(cumul);
-      cumul -= sorted[i].newFollowers;
-      if (cumul < 0) cumul = 0;
-    }
-  }
-
   const d = {
-    labels:       sorted.map(m => m.label),
-    impressions:  sorted.map(m => m.impressions),
-    followers:    sorted.map(m => m.followers),
-    engagements:  sorted.map(m => m.engagements),
-    postsPerMonth:sorted.map(() => 0),
-    _sortKeys:    sorted.map(m => m.sortKey)
+    labels:         sorted.map(m => m.label),
+    impressions:    sorted.map(m => m.impressions),
+    followers:      sorted.map(m => m.newFollowers),  // neue Follower pro Monat (direkt aus Export)
+    engagements:    sorted.map(m => m.engagements),
+    postsPerMonth:  sorted.map(() => 0),
+    _sortKeys:      sorted.map(m => m.sortKey),
+    totalFollowers: totalFollowers  // Gesamtfollower (z.B. 4487)
   };
 
   // TOP POSTS sheet — two side-by-side tables merged by URL
@@ -2005,7 +1996,7 @@ function renderDash(container) {
 function buildDashHTML(c, ins) {
   const ci = c.ci;
   const m  = c.monthly;
-  const { totalImpr, totalFoll, totalEng, avgEngRate, trendPct, trend, engLabel, engColor, beforeAfter, n } = ins;
+  const { totalImpr, totalFoll, totalEng, avgEngRate, trendPct, trend, engLabel, engColor, beforeAfter, n, totalFollowersNow } = ins;
   const p = ci.primary;
   const acc = ci.accent;
 
@@ -2026,7 +2017,7 @@ function buildDashHTML(c, ins) {
       </div>
       <div class="hero-kpis">
         <div><div class="hero-kpi-val" style="color:${acc}">${fmtK(totalImpr)}</div><div class="hero-kpi-lbl">Impressionen</div></div>
-        <div><div class="hero-kpi-val" style="color:${acc}">+${fmt(totalFoll)}</div><div class="hero-kpi-lbl">Neue Follower</div></div>
+        <div><div class="hero-kpi-val" style="color:${acc}">${totalFollowersNow ? fmt(totalFollowersNow) : '+'+fmt(totalFoll)}</div><div class="hero-kpi-lbl">${totalFollowersNow ? 'Follower gesamt' : 'Neue Follower'}</div></div>
         <div><div class="hero-kpi-val" style="color:${acc}">${avgEngRate.toFixed(1)}%</div><div class="hero-kpi-lbl">Ø Eng. Rate</div></div>
         <div><div class="hero-kpi-val" style="color:${trend==='rückläufig'?'#FF9090':acc}">${trendPct>0?'+':''}${trendPct}%</div><div class="hero-kpi-lbl">Reichweiten-Trend</div></div>
       </div>
@@ -2040,9 +2031,9 @@ function buildDashHTML(c, ins) {
       <div class="kpi-sub"><span class="txt-g">↑</span> Ø ${fmtK(Math.round(totalImpr/n))} / Monat</div>
     </div>
     <div class="kpi-card" style="--k-accent:${acc}">
-      <div class="kpi-lbl">Neue Follower</div>
+      <div class="kpi-lbl">Neue Follower im Zeitraum</div>
       <div class="kpi-val">+${fmt(totalFoll)}</div>
-      <div class="kpi-sub"><span class="txt-g">↑</span> Ø ${Math.round(totalFoll/n)} / Monat</div>
+      <div class="kpi-sub">${totalFollowersNow ? `<span style="font-weight:600;color:${acc}">${fmt(totalFollowersNow)} Gesamt</span> · ` : ''}<span class="txt-g">↑</span> Ø ${Math.round(totalFoll/n)} / Monat</div>
     </div>
     <div class="kpi-card" style="--k-accent:#00A86B">
       <div class="kpi-lbl">Engagements gesamt</div>
@@ -2290,7 +2281,8 @@ function analyze(monthly, splitLabel, primary) {
     { num:'1×', color:'#C89500', title:'Meinung / Daten', sub:'Thought Leadership aufbauen' },
     { num:'4+', color:'#6E7A9F', title:'Brand / Events', sub:'Basis-Rhythmus halten' },
   ];
-  return { totalImpr, totalFoll, totalEng, avgEngRate, avgPostsPerMonth, bestImprIdx, trendPct, trend, engLabel, engColor, beforeAfter, recommendations, contentMix, n };
+  const totalFollowersNow = monthly.totalFollowers || 0; // from AggregateAnalytics (e.g. 4487)
+  return { totalImpr, totalFoll, totalEng, avgEngRate, avgPostsPerMonth, bestImprIdx, trendPct, trend, engLabel, engColor, beforeAfter, recommendations, contentMix, n, totalFollowersNow };
 }
 
 // ══════════════════════════════════════════
