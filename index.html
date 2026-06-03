@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-10 -->
+<!-- v20260603-11 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -2006,22 +2006,7 @@ function renderDash(container) {
   if (!c.monthly?.labels?.length) { navigate('edit', ROUTE.clientId, 'data'); return; }
 
   const ci = c.ci;
-  // Compute postsPerMonth dynamically from c.posts if all zeros
-  const monthlyForAnalysis = (()=>{
-    const m = c.monthly;
-    const allZero = !m.postsPerMonth || m.postsPerMonth.every(v=>!v);
-    if (!allZero || !c.posts?.length) return m;
-    const counts = Object.fromEntries(m.labels.map(l=>[l,0]));
-    c.posts.forEach(p => {
-      if (!p.label) return;
-      const parts = p.label.split('·');
-      const raw = (parts[parts.length-1]||'').trim(); // e.g. "Dez 2025"
-      const norm = raw.replace(/(\d{4})/, y => y.slice(-2)); // "Dez 25"
-      if (counts[norm] !== undefined) counts[norm]++;
-    });
-    return { ...m, postsPerMonth: m.labels.map(l=>counts[l]||0) };
-  })();
-  const ins = analyze(monthlyForAnalysis, c.splitLabel, c.ci.primary);
+  const ins = analyze(c.monthly, c.splitLabel, c.ci.primary);
   const p = ci.primary;
 
   container.innerHTML = `
@@ -2112,7 +2097,7 @@ function buildDashHTML(c, ins) {
     <div class="split-side split-before">
       <div class="split-lbl">Vorher · ${before.label}</div>
       <div class="split-rows">
-        <div class="split-row"><span class="split-row-lbl">Posts / Monat</span><span class="split-row-val">Ø ${before.avgPosts.toFixed(1)}</span></div>
+        ${before.avgPosts>0?`<div class="split-row"><span class="split-row-lbl">Posts / Monat</span><span class="split-row-val">Ø ${before.avgPosts.toFixed(1)}</span></div>`:''}
         <div class="split-row"><span class="split-row-lbl">Impressionen / Monat</span><span class="split-row-val">Ø ${fmtK(Math.round(before.avgImpr))}</span></div>
         <div class="split-row"><span class="split-row-lbl">Neue Follower / Monat</span><span class="split-row-val">Ø ${Math.round(before.avgFoll)}</span></div>
         <div class="split-row"><span class="split-row-lbl">Engagements / Monat</span><span class="split-row-val">Ø ${fmt(Math.round(before.avgEng))}</span></div>
@@ -2122,7 +2107,7 @@ function buildDashHTML(c, ins) {
     <div class="split-side split-after">
       <div class="split-lbl">Nachher · ${after.label}</div>
       <div class="split-rows">
-        <div class="split-row"><span class="split-row-lbl">Posts / Monat</span><span class="split-row-val">Ø ${after.avgPosts.toFixed(1)}</span></div>
+        ${after.avgPosts>0?`<div class="split-row"><span class="split-row-lbl">Posts / Monat</span><span class="split-row-val">Ø ${after.avgPosts.toFixed(1)}</span></div>`:''}
         <div class="split-row"><span class="split-row-lbl">Impressionen / Monat</span><span class="split-row-val">Ø ${fmtK(Math.round(after.avgImpr))} <small style="color:#00A86B">(+${imprGrowth}%)</small></span></div>
         <div class="split-row"><span class="split-row-lbl">Neue Follower / Monat</span><span class="split-row-val">Ø ${Math.round(after.avgFoll)} <small style="color:#00A86B">(+${follGrowth}%)</small></span></div>
         <div class="split-row"><span class="split-row-lbl">Engagements / Monat</span><span class="split-row-val">Ø ${fmt(Math.round(after.avgEng))}</span></div>
