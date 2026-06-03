@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-18 -->
+<!-- v20260603-19 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: fetch latest version silently, reload if newer
 (function(){
-  const MY_V = 'v20260603-18';
+  const MY_V = 'v20260603-19';
   if (sessionStorage.getItem('_lv') === MY_V) return; // already checked this session
   sessionStorage.setItem('_lv', MY_V);
   fetch(location.pathname + '?_t=' + Date.now(), {cache:'no-store'})
@@ -1052,16 +1052,7 @@ function renderEdit(container) {
   if (c._manualMode && c.monthly) restoreManualRows(c.monthly);
   else if (!c._manualMode) buildManRows([]);
   restorePostsRows(c.posts || []);
-  updateSplitSelect(c.monthly?.labels || [], c.splitLabel);
-
-  // uploadZone is now a <label for="xlsFile"> — click opens file dialog automatically, no JS needed
-  // Restore split section visibility if data exists
-  const ss = document.getElementById('splitSection');
-  if (ss && c.monthly?.labels?.length) ss.style.display = '';
-  // Restore preview if pending
-  if (c.monthly?.labels?.length) {
-    updateSplitSelect(c.monthly.labels, c.splitLabel||'');
-  }
+  updateSplitSelect(c.monthly?.labels || [], c.splitLabel || '');
 }
 
 function setStep(step) {
@@ -1134,10 +1125,10 @@ function saveCIAndNext() {
 function switchDataTab(tab) {
   const c = getClient(ROUTE.clientId);
   if (c) c._manualMode = tab === 'man';
-  document.getElementById('xlsPane').style.display = tab==='xls' ? '' : 'none';
-  document.getElementById('manPane').style.display = tab==='man' ? '' : 'none';
-  document.getElementById('tabXLS').classList.toggle('active', tab==='xls');
-  document.getElementById('tabMAN').classList.toggle('active', tab==='man');
+  document.getElementById('xlsPane')?.style && (document.getElementById('xlsPane').style.display = tab==='xls' ? '' : 'none');
+  document.getElementById('manPane')?.style && (document.getElementById('manPane').style.display = tab==='man' ? '' : 'none');
+  document.getElementById('tabXLS')?.classList.toggle('active', tab==='xls');
+  document.getElementById('tabMAN')?.classList.toggle('active', tab==='man');
 }
 
 // ── Manual rows
@@ -1883,9 +1874,12 @@ function clearAllData() {
   if (!confirm('Alle Daten für diesen Kunden löschen?\n\nDas betrifft: Analysedaten, Top-Posts und die Dateiliste.\nCI-Einstellungen bleiben erhalten.')) return;
   c.monthly = null;
   c.posts = [];
+  c.flopPosts = [];
   c._loadedFiles = [];
+  c.splitLabel = '';
   c.recommendations = null;
   c.contentMix = null;
+  c.customNote = '';
   c.updatedAt = Date.now();
   saveApp();
   // Re-render edit view to show empty state
@@ -1996,11 +1990,12 @@ function updateSplitSelect(labels, current) {
 function saveDataAndNext() {
   const c = getClient(ROUTE.clientId);
   if (!c) return;
-  if (c._manualMode) {
+  if (c._manualMode && document.getElementById('manBody')) {
     const d = readManualData();
     if (!d.labels.length) { showToast('Bitte mindestens 1 Monat eingeben','warn'); return; }
     c.monthly = d;
   }
+  c._manualMode = false; // reset so Excel uploads work normally
   if (!c.monthly?.labels?.length) { showToast('Keine Daten vorhanden','warn'); return; }
   c.splitLabel = document.getElementById('splitSel')?.value || '';
   c.updatedAt = Date.now();
@@ -2563,12 +2558,12 @@ function editCustomNote(clientId) {
   const overlay = document.createElement('div');
   overlay.id = 'customNoteOverlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;display:flex;align-items:center;justify-content:center';
-  overlay.innerHTML = `<div style="background:var(--card);border-radius:16px;padding:28px;width:min(560px,95vw);box-shadow:0 20px 60px rgba(0,0,0,.3)">
+  overlay.innerHTML = `<div style="background:#fff;border-radius:16px;padding:28px;width:min(560px,95vw);box-shadow:0 20px 60px rgba(0,0,0,.3)">
     <div style="font-weight:700;font-size:16px;margin-bottom:14px">📝 Eigene Notiz / Empfehlung</div>
-    <textarea id="customNoteTA" style="width:100%;height:180px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-size:13px;font-family:'DM Sans',sans-serif;resize:vertical;background:var(--bg);color:var(--text);box-sizing:border-box" placeholder="Hier eigene Empfehlungen, Notizen oder Maßnahmen eintragen…">${(c.customNote||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>
+    <textarea id="customNoteTA" style="width:100%;height:180px;border:1.5px solid #E2E6F0;border-radius:10px;padding:12px;font-size:13px;font-family:'DM Sans',sans-serif;resize:vertical;background:#F8F9FF;color:#1A1F36;box-sizing:border-box" placeholder="Hier eigene Empfehlungen, Notizen oder Maßnahmen eintragen…">${(c.customNote||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
-      <button onclick="document.getElementById('customNoteOverlay').remove()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:none;cursor:pointer;font-family:'DM Sans',sans-serif">Abbrechen</button>
-      <button onclick="saveCustomNote('${clientId||ROUTE.clientId}')" style="padding:8px 18px;border-radius:8px;background:var(--primary);color:#fff;border:none;cursor:pointer;font-weight:600;font-family:'DM Sans',sans-serif">Speichern</button>
+      <button onclick="document.getElementById('customNoteOverlay').remove()" style="padding:8px 18px;border-radius:8px;border:1px solid #E2E6F0;background:none;cursor:pointer;font-family:'DM Sans',sans-serif;color:#1A1F36">Abbrechen</button>
+      <button onclick="saveCustomNote('${clientId||ROUTE.clientId}')" style="padding:8px 18px;border-radius:8px;background:#5B63FE;color:#fff;border:none;cursor:pointer;font-weight:600;font-family:'DM Sans',sans-serif">Speichern</button>
     </div>
   </div>`;
   document.body.appendChild(overlay);
@@ -2580,7 +2575,7 @@ function saveCustomNote(clientId) {
   c.customNote = ta.value;
   saveApp();
   document.getElementById('customNoteOverlay')?.remove();
-  navigate('dash', ROUTE.clientId);
+  navigate('dash', clientId || ROUTE.clientId);
 }
 
 function resetRecsToBlank(clientId) {
