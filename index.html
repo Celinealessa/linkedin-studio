@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-17 -->
+<!-- v20260603-18 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: fetch latest version silently, reload if newer
 (function(){
-  const MY_V = 'v20260603-17';
+  const MY_V = 'v20260603-18';
   if (sessionStorage.getItem('_lv') === MY_V) return; // already checked this session
   sessionStorage.setItem('_lv', MY_V);
   fetch(location.pathname + '?_t=' + Date.now(), {cache:'no-store'})
@@ -1845,48 +1845,9 @@ function confirmImport() {
   saveApp();
   _pendingImport = null;
 
-  // Update status banner
-  const title = document.getElementById('dataStatusTitle');
-  const sub   = document.getElementById('dataStatusSub');
-  const banner= document.getElementById('dataStatusBanner');
-  if (title) title.innerHTML = '✅ Daten gespeichert!';
-  if (sub)   sub.textContent = `${d.labels.length} Zeiträume: ${d.labels[0]} – ${d.labels[d.labels.length-1]}`;
-  if (banner) { banner.style.background='#E8F8F2'; banner.style.border='1px solid #00A86B'; }
-
-  // Hide upload zone, show split section
-  const uz = document.getElementById('uploadZoneWrap');
-  if (uz) uz.style.display = 'none';
-  const ss = document.getElementById('splitSection');
-  if (ss) ss.style.display = '';
-
-  // Update file chips
-  refreshFileChips();
-
-  // Rebuild preview table
-  const pb = document.getElementById('previewBody');
-  if (pb) pb.innerHTML = d.labels.map((l,i) => `
-    <tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:7px 14px;font-family:'DM Mono',monospace;font-size:12px">${l}</td>
-      <td style="padding:7px 14px;text-align:right">${(d.impressions[i]||0).toLocaleString('de-DE')}</td>
-      <td style="padding:7px 14px;text-align:right">${(d.followers[i]||0).toLocaleString('de-DE')}</td>
-      <td style="padding:7px 14px;text-align:right">${(d.engagements[i]||0).toLocaleString('de-DE')}</td>
-      <td style="padding:7px 14px;text-align:right">${d.postsPerMonth[i]||0}</td>
-    </tr>`).join('');
-
-  // Rebuild split select
-  updateSplitSelect(d.labels, c.splitLabel||'');
-
-  // Add "weitere Datei" button to banner if not present
-  const bannerBtns = document.getElementById('dataStatusBannerBtns');
-  if (!bannerBtns) {
-    const addBtn = document.createElement('div');
-    addBtn.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center';
-    addBtn.innerHTML = `<label for="xlsFileAdd" class="btn btn-sm" style="cursor:pointer;border-color:#5B63FE;color:#5B63FE;font-weight:600;margin:0">➕ Weitere Datei</label>
-      <button class="btn btn-sm" onclick="clearAllData()" style="border-color:#E53E3E;color:#E53E3E">🗑️ Löschen</button>`;
-    banner?.appendChild(addBtn);
-  }
-
-  showToast(`✅ ${d.labels.length} Zeiträume importiert!`, 'ok');
+  // Re-render the entire edit view so data table, buttons, split select all appear correctly
+  showToast(`✅ ${d.labels.length} Zeiträume importiert — ${c.posts?.length ? c.posts.length+' Posts erkannt' : 'keine Posts erkannt'}`, 'ok');
+  navigate('edit', ROUTE.clientId, 'data');
 }
 
 function refreshFileChips() {
