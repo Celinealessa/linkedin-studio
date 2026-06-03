@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-7 -->
+<!-- v20260603-10 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -2006,7 +2006,22 @@ function renderDash(container) {
   if (!c.monthly?.labels?.length) { navigate('edit', ROUTE.clientId, 'data'); return; }
 
   const ci = c.ci;
-  const ins = analyze(c.monthly, c.splitLabel, c.ci.primary);
+  // Compute postsPerMonth dynamically from c.posts if all zeros
+  const monthlyForAnalysis = (()=>{
+    const m = c.monthly;
+    const allZero = !m.postsPerMonth || m.postsPerMonth.every(v=>!v);
+    if (!allZero || !c.posts?.length) return m;
+    const counts = Object.fromEntries(m.labels.map(l=>[l,0]));
+    c.posts.forEach(p => {
+      if (!p.label) return;
+      const parts = p.label.split('·');
+      const raw = (parts[parts.length-1]||'').trim(); // e.g. "Dez 2025"
+      const norm = raw.replace(/(\d{4})/, y => y.slice(-2)); // "Dez 25"
+      if (counts[norm] !== undefined) counts[norm]++;
+    });
+    return { ...m, postsPerMonth: m.labels.map(l=>counts[l]||0) };
+  })();
+  const ins = analyze(monthlyForAnalysis, c.splitLabel, c.ci.primary);
   const p = ci.primary;
 
   container.innerHTML = `
