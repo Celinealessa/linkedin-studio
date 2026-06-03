@@ -796,81 +796,78 @@ function renderEdit(container) {
     <!-- Step: Data -->
     <div id="stepData" style="${ROUTE.step==='data'?'':'display:none'}">
 
-      <!-- ── EXCEL UPLOAD (Hauptbereich) ── -->
-      <div class="edit-section" style="border:2px solid var(--app-accent);background:linear-gradient(135deg,#FAFBFF,#F0F2FF)">
-        <div class="edit-section-title" style="color:var(--app-accent)">📂 Excel-Datei hochladen</div>
-
-        <!-- Drop Zone -->
-        <label for="xlsFile" id="uploadZone" style="
-          display:flex;flex-direction:column;align-items:center;justify-content:center;
-          border:2px dashed var(--app-accent);border-radius:12px;padding:2.5rem 1rem;
-          cursor:pointer;transition:all .2s;background:#fff;gap:8px;text-align:center">
-          <div style="font-size:48px;line-height:1">📊</div>
-          <div style="font-size:17px;font-weight:600;color:var(--app-accent)">Excel-Datei hier ablegen</div>
-          <div style="font-size:13px;color:var(--muted)">oder klicken zum Auswählen</div>
-          <div style="margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
-            <span style="background:var(--app-accent);color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px">.xlsx</span>
-            <span style="background:var(--app-accent);color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px">.xls</span>
-            <span style="background:#6E7A9F;color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px">.csv</span>
+      <!-- STATUS: noch keine Daten -->
+      <div id="uploadBox" style="${c.monthly?'display:none':''}">
+        <div style="
+          border:3px dashed #5B63FE;border-radius:16px;
+          background:linear-gradient(135deg,#F4F5FF,#ECEEFF);
+          padding:3rem 2rem;text-align:center;cursor:pointer;
+          transition:all .2s" id="uploadZone"
+          onclick="document.getElementById('xlsFile').click()"
+          ondragover="event.preventDefault();this.style.background='#E0E2FF'"
+          ondragleave="this.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)'"
+          ondrop="event.preventDefault();this.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)';if(event.dataTransfer.files[0])handleDataFile2(event.dataTransfer.files[0])">
+          <div style="font-size:56px;margin-bottom:12px">📂</div>
+          <div style="font-size:20px;font-weight:700;color:#5B63FE;margin-bottom:6px">Excel-Datei hochladen</div>
+          <div style="font-size:14px;color:#6E7A9F;margin-bottom:16px">Hier klicken oder Datei reinziehen</div>
+          <div style="display:inline-flex;gap:8px">
+            <span style="background:#5B63FE;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.xlsx</span>
+            <span style="background:#5B63FE;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.xls</span>
+            <span style="background:#8B93FF;color:#fff;font-weight:700;padding:5px 14px;border-radius:20px;font-size:13px">.csv</span>
           </div>
-        </label>
-        <input type="file" id="xlsFile" accept=".xlsx,.xls,.csv,.CSV" style="display:none" onchange="handleDataFile(this)">
-
-        <!-- Detected OK banner -->
-        <div id="dataOk" class="data-ok ${c.monthly?'show':''}">
-          ✅ ${c.monthly ? c.monthly.labels.length + ' Monate geladen: ' + c.monthly.labels[0] + ' – ' + c.monthly.labels[c.monthly.labels.length-1] : ''}
+          <input type="file" id="xlsFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleDataFile2(this.files[0])">
         </div>
-
-        <!-- Import preview (shown after upload) -->
-        <div id="importPreview" style="display:${c.monthly?'':'none'};margin-top:10px"></div>
-
-        <!-- Info pills -->
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">
-          <span style="font-size:11px;background:#E8EEF8;color:#2D3561;padding:4px 10px;border-radius:20px">📅 Datum / Monat</span>
-          <span style="font-size:11px;background:#E8EEF8;color:#2D3561;padding:4px 10px;border-radius:20px">👁️ Impressionen</span>
-          <span style="font-size:11px;background:#E8EEF8;color:#2D3561;padding:4px 10px;border-radius:20px">👍 Reaktionen / Likes</span>
-          <span style="font-size:11px;background:#E8EEF8;color:#2D3561;padding:4px 10px;border-radius:20px">💬 Kommentare</span>
-          <span style="font-size:11px;background:#E8EEF8;color:#2D3561;padding:4px 10px;border-radius:20px">🔁 Weiterleitungen</span>
-          <span style="font-size:11px;background:#E8EEF8;color:#2D3561;padding:4px 10px;border-radius:20px">👥 Neue Follower</span>
-          <span style="font-size:11px;background:#E8EEF8;color:#2D3561;padding:4px 10px;border-radius:20px">📝 Caption / Beitragstitel</span>
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:8px">
-          ✓ LinkedIn-Export direkt hochladbar &nbsp;·&nbsp; ✓ 1 Zeile pro Post <em>oder</em> Monatssummary — wird automatisch erkannt &nbsp;·&nbsp; ✓ Beliebige Spaltenreihenfolge
-        </div>
-
-        <!-- Vorlagen -->
-        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" onclick="downloadTemplate('post')">⬇️ Beispiel-Vorlage (Post-Level)</button>
-          <button class="btn btn-ghost btn-sm" onclick="downloadTemplate('monthly')">⬇️ Beispiel-Vorlage (Monatlich)</button>
+        <div style="text-align:center;margin-top:12px;font-size:12px;color:#6E7A9F">
+          Kein passendes Format?
+          <button class="btn btn-ghost btn-sm" style="font-size:12px" onclick="downloadTemplate('post')">Beispiel-Vorlage herunterladen</button>
         </div>
       </div>
 
-      <!-- ── ODER: Manuell ── -->
-      <details style="margin-bottom:1rem">
-        <summary style="cursor:pointer;font-size:13px;color:var(--muted);padding:8px 0;user-select:none">
-          ✏️ Daten lieber manuell eingeben?
-        </summary>
-        <div class="edit-section" style="margin-top:8px">
-          <div class="dt-wrap">
-            <table class="dt">
-              <thead><tr><th class="t-left">Monat</th><th>Impressionen</th><th>Neue Follower</th><th>Engagements</th><th>Posts</th><th></th></tr></thead>
-              <tbody id="manBody"></tbody>
+      <!-- STATUS: Daten geladen -->
+      <div id="dataLoadedBox" style="${c.monthly?'':'display:none'}">
+        <div style="background:#E8F8F2;border:1px solid #00A86B;border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div>
+            <div style="font-size:15px;font-weight:600;color:#00624A">✅ Daten geladen</div>
+            <div style="font-size:13px;color:#00A86B;margin-top:2px" id="loadedInfo">
+              ${c.monthly ? c.monthly.labels.length+' Monate: '+c.monthly.labels[0]+' – '+c.monthly.labels[c.monthly.labels.length-1] : ''}
+            </div>
+          </div>
+          <button class="btn btn-sm" onclick="document.getElementById('xlsFile2').click()" style="border-color:#00A86B;color:#00624A">
+            🔄 Andere Datei laden
+          </button>
+          <input type="file" id="xlsFile2" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleDataFile2(this.files[0])">
+        </div>
+
+        <!-- Monats-Vorschau -->
+        <div style="background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:14px">
+          <div style="padding:10px 16px;background:var(--bg);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Erkannte Daten</div>
+          <div style="max-height:260px;overflow-y:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:13px" id="previewTable">
+              <thead>
+                <tr style="background:#F8F9FF;border-bottom:2px solid var(--border)">
+                  <th style="padding:8px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--muted)">Monat</th>
+                  <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Impressionen</th>
+                  <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Follower</th>
+                  <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Engagements</th>
+                  <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Posts</th>
+                </tr>
+              </thead>
+              <tbody id="previewBody">
+                ${c.monthly ? c.monthly.labels.map((l,i)=>`<tr style="border-bottom:1px solid var(--border)"><td style="padding:7px 14px;font-family:'DM Mono',monospace;font-size:12px">${l}</td><td style="padding:7px 14px;text-align:right">${(c.monthly.impressions[i]||0).toLocaleString('de-DE')}</td><td style="padding:7px 14px;text-align:right">${(c.monthly.followers[i]||0).toLocaleString('de-DE')}</td><td style="padding:7px 14px;text-align:right">${(c.monthly.engagements[i]||0).toLocaleString('de-DE')}</td><td style="padding:7px 14px;text-align:right">${c.monthly.postsPerMonth[i]||0}</td></tr>`).join('') : '' }
+              </tbody>
             </table>
           </div>
-          <div class="add-row" onclick="addManRow()">＋ Zeile hinzufügen</div>
-          <div style="margin-top:10px">
-            <button class="btn btn-sm" onclick="applyManualData()">✅ Manuelle Daten übernehmen</button>
-          </div>
         </div>
-      </details>
 
-      <!-- Vergleichspunkt -->
-      <div class="edit-section" id="splitSection" style="${c.monthly?'':'display:none'}">
-        <div class="edit-section-title" style="font-size:12px">⚖️ Vorher / Nachher Vergleich <span style="font-size:11px;color:var(--muted);font-weight:400">— optional</span></div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Ab welchem Monat habt ihr zusammengearbeitet? Das erzeugt einen automatischen Vorher/Nachher-Vergleich im Dashboard.</div>
-        <select class="form-input" id="splitSel" style="max-width:280px">
-          <option value="">— kein Vergleich —</option>
-        </select>
+        <!-- Vergleichspunkt -->
+        <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem;margin-bottom:14px">
+          <div style="font-size:13px;font-weight:600;margin-bottom:4px">⚖️ Vorher / Nachher Vergleich <span style="font-size:11px;color:var(--muted);font-weight:400">— optional</span></div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Ab welchem Monat habt ihr zusammengearbeitet?</div>
+          <select class="form-input" id="splitSel" style="max-width:280px">
+            <option value="">— kein Vergleich —</option>
+            ${c.monthly ? c.monthly.labels.map(l=>`<option value="${l}" ${l===c.splitLabel?'selected':''}>${l}</option>`).join('') : ''}
+          </select>
+        </div>
       </div>
 
       <div style="display:flex;justify-content:space-between">
@@ -1129,6 +1126,7 @@ function fmtMonthLabel(year, month) {
 
 // ── Main entry
 function handleDataFile(input) { if (input.files[0]) processDataFile(input.files[0]); }
+function handleDataFile2(file) { if (file) processDataFile(file); }
 function processDataFile(file) {
   const ext = file.name.split('.').pop().toLowerCase();
   if (ext==='csv') { const r=new FileReader(); r.onload=e=>smartImport_fromCSV(e.target.result); r.readAsText(file,'UTF-8'); }
@@ -1325,12 +1323,29 @@ function confirmImport() {
   c.updatedAt = Date.now();
   saveApp();
   _pendingImport = null;
-  const ok = document.getElementById('dataOk');
-  if (ok) { ok.textContent = `✅ ${d.labels.length} Monate gespeichert: ${d.labels[0]} – ${d.labels[d.labels.length-1]}`; ok.classList.add('show'); }
-  // Hide preview, show split section
-  document.getElementById('importPreview').style.display = 'none';
-  const ss = document.getElementById('splitSection');
-  if (ss) ss.style.display = '';
+
+  // Switch UI: hide upload box, show loaded box
+  const ub = document.getElementById('uploadBox');
+  const lb = document.getElementById('dataLoadedBox');
+  if (ub) ub.style.display = 'none';
+  if (lb) lb.style.display = '';
+
+  // Fill loaded info
+  const li = document.getElementById('loadedInfo');
+  if (li) li.textContent = `${d.labels.length} Monate: ${d.labels[0]} – ${d.labels[d.labels.length-1]}`;
+
+  // Fill preview table
+  const pb = document.getElementById('previewBody');
+  if (pb) pb.innerHTML = d.labels.map((l,i) => `
+    <tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:7px 14px;font-family:'DM Mono',monospace;font-size:12px">${l}</td>
+      <td style="padding:7px 14px;text-align:right">${(d.impressions[i]||0).toLocaleString('de-DE')}</td>
+      <td style="padding:7px 14px;text-align:right">${(d.followers[i]||0).toLocaleString('de-DE')}</td>
+      <td style="padding:7px 14px;text-align:right">${(d.engagements[i]||0).toLocaleString('de-DE')}</td>
+      <td style="padding:7px 14px;text-align:right">${d.postsPerMonth[i]||0}</td>
+    </tr>`).join('');
+
+  // Fill split select
   updateSplitSelect(d.labels, c.splitLabel||'');
   showToast(`${d.labels.length} Monate importiert 🎉`, 'ok');
 }
