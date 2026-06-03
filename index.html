@@ -441,6 +441,26 @@ body {
 .toast.ok { background:var(--success); }
 .toast.warn { background:var(--warn); }
 
+/* ── STRATEGY CARDS ── */
+.strat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:1.5rem; }
+.strat-card { background:#fff; border:1px solid var(--border); border-radius:var(--radius); padding:1.25rem; box-shadow:var(--shadow); position:relative; overflow:hidden; }
+.strat-accent { position:absolute; top:0; left:0; right:0; height:4px; }
+.strat-badge { display:inline-block; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; padding:3px 10px; border-radius:20px; margin-bottom:10px; }
+.strat-val { font-size:20px; font-weight:600; margin-bottom:3px; }
+.strat-title { font-size:13px; font-weight:600; color:var(--text); margin-bottom:8px; }
+.strat-body { font-size:12px; color:var(--muted); line-height:1.6; margin-bottom:10px; }
+.strat-rec { font-size:12px; color:var(--text); font-weight:500; }
+.strat-edit-btn { position:absolute; top:8px; right:8px; background:rgba(255,255,255,0.95); border:1px solid var(--border); border-radius:6px; padding:3px 8px; font-size:10px; cursor:pointer; opacity:0; transition:opacity .15s; font-family:'DM Sans',sans-serif; }
+.strat-card:hover .strat-edit-btn { opacity:1; }
+/* ── CONTENT MIX ── */
+.mix-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:1.5rem; }
+.mix-card { background:#fff; border:1px solid var(--border); border-radius:var(--radius); padding:1rem 1.25rem; text-align:center; box-shadow:var(--shadow); position:relative; }
+.mix-num { font-size:32px; font-weight:600; line-height:1; }
+.mix-title { font-size:12px; font-weight:600; color:var(--text); margin:6px 0 2px; }
+.mix-sub { font-size:11px; color:var(--muted); }
+.mix-edit-btn { position:absolute; top:6px; right:6px; background:rgba(255,255,255,0.95); border:1px solid var(--border); border-radius:5px; padding:2px 7px; font-size:10px; cursor:pointer; opacity:0; transition:opacity .15s; font-family:'DM Sans',sans-serif; }
+.mix-card:hover .mix-edit-btn { opacity:1; }
+
 /* ══════════════════════════════════════════
    PRINT
 ══════════════════════════════════════════ */
@@ -566,6 +586,8 @@ function newClient() {
     monthly: null,
     splitLabel: '',
     posts: [],
+    recommendations: null,
+    contentMix: null,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -656,7 +678,7 @@ function renderHome(container) {
   }
 
   const cards = APP.clients.map(c => {
-    const ins = c.monthly ? analyze(c.monthly, c.splitLabel) : null;
+    const ins = c.monthly ? analyze(c.monthly, c.splitLabel, c.ci.primary) : null;
     const status = !c.monthly ? 'empty' : 'ready';
     const statusLabel = { empty:'Keine Daten', draft:'Entwurf', ready:'Dashboard bereit' }[status];
     const statusClass = { empty:'status-empty', draft:'status-draft', ready:'status-ready' }[status];
@@ -1497,7 +1519,7 @@ function renderDash(container) {
   if (!c.monthly?.labels?.length) { navigate('edit', ROUTE.clientId, 'data'); return; }
 
   const ci = c.ci;
-  const ins = analyze(c.monthly, c.splitLabel);
+  const ins = analyze(c.monthly, c.splitLabel, c.ci.primary);
   const p = ci.primary;
 
   container.innerHTML = `
@@ -1529,35 +1551,41 @@ function renderDash(container) {
 function buildDashHTML(c, ins) {
   const ci = c.ci;
   const m  = c.monthly;
-  const { totalImpr, totalFoll, totalEng, avgEngRate, trendPct, trend, engLabel, engColor, beforeAfter, recs } = ins;
-  const n = m.labels.length;
-  const accent = ci.accent;
+  const { totalImpr, totalFoll, totalEng, avgEngRate, trendPct, trend, engLabel, engColor, beforeAfter, n } = ins;
+  const p = ci.primary;
+  const acc = ci.accent;
+
+  // Use stored recommendations if available, otherwise use auto-generated
+  if (!c.recommendations) c.recommendations = ins.recommendations;
+  if (!c.contentMix) c.contentMix = ins.contentMix;
+  const recs = c.recommendations;
+  const mix  = c.contentMix;
+
+  const trendArrow = trend==='wachsend'?`<span class="trend-up">↑ +${trendPct}%</span>`:trend==='rückläufig'?`<span class="trend-dn">↓ ${trendPct}%</span>`:`<span class="trend-eq">→ ${trendPct}%</span>`;
 
   let html = `
-  <!-- HERO -->
-  <div class="hero" style="background:${ci.primary};margin-bottom:1.5rem">
+  <div class="hero" style="background:${p};margin-bottom:1.5rem">
     <div class="hero-inner">
       <div>
         <div class="hero-title">LinkedIn Performance${ci.person?'<br>'+ci.person:''}</div>
-        <div class="hero-sub">${ci.period}${c.splitLabel?' · Zusammenarbeit ab '+c.splitLabel:''}</div>
+        <div class="hero-sub">${ci.period}${c.splitLabel?' · Agentur-Start ab '+c.splitLabel:''}</div>
       </div>
       <div class="hero-kpis">
-        <div><div class="hero-kpi-val" style="color:${accent}">${fmtK(totalImpr)}</div><div class="hero-kpi-lbl">Impressionen</div></div>
-        <div><div class="hero-kpi-val" style="color:${accent}">+${fmt(totalFoll)}</div><div class="hero-kpi-lbl">Neue Follower</div></div>
-        <div><div class="hero-kpi-val" style="color:${accent}">${avgEngRate.toFixed(1)}%</div><div class="hero-kpi-lbl">Ø Eng. Rate</div></div>
-        <div><div class="hero-kpi-val" style="color:${trend==='rückläufig'?'#FF8080':accent}">${trend==='wachsend'?'+':''}${trendPct}%</div><div class="hero-kpi-lbl">Reichweiten-Trend</div></div>
+        <div><div class="hero-kpi-val" style="color:${acc}">${fmtK(totalImpr)}</div><div class="hero-kpi-lbl">Impressionen</div></div>
+        <div><div class="hero-kpi-val" style="color:${acc}">+${fmt(totalFoll)}</div><div class="hero-kpi-lbl">Neue Follower</div></div>
+        <div><div class="hero-kpi-val" style="color:${acc}">${avgEngRate.toFixed(1)}%</div><div class="hero-kpi-lbl">Ø Eng. Rate</div></div>
+        <div><div class="hero-kpi-val" style="color:${trend==='rückläufig'?'#FF9090':acc}">${trendPct>0?'+':''}${trendPct}%</div><div class="hero-kpi-lbl">Reichweiten-Trend</div></div>
       </div>
     </div>
   </div>
 
-  <!-- KPI CARDS -->
   <div class="kpi-grid">
-    <div class="kpi-card" style="--k-accent:${ci.primary}">
+    <div class="kpi-card" style="--k-accent:${p}">
       <div class="kpi-lbl">Impressionen gesamt</div>
       <div class="kpi-val">${fmt(totalImpr)}</div>
       <div class="kpi-sub"><span class="txt-g">↑</span> Ø ${fmtK(Math.round(totalImpr/n))} / Monat</div>
     </div>
-    <div class="kpi-card" style="--k-accent:${ci.accent}">
+    <div class="kpi-card" style="--k-accent:${acc}">
       <div class="kpi-lbl">Neue Follower</div>
       <div class="kpi-val">+${fmt(totalFoll)}</div>
       <div class="kpi-sub"><span class="txt-g">↑</span> Ø ${Math.round(totalFoll/n)} / Monat</div>
@@ -1582,20 +1610,20 @@ function buildDashHTML(c, ins) {
     <div class="split-side split-before">
       <div class="split-lbl">Vorher · ${before.label}</div>
       <div class="split-rows">
-        <div class="split-row"><span class="split-row-lbl">Posts/Monat</span><span class="split-row-val">Ø ${before.avgPosts.toFixed(1)}</span></div>
-        <div class="split-row"><span class="split-row-lbl">Impressionen/Monat</span><span class="split-row-val">Ø ${fmtK(Math.round(before.avgImpr))}</span></div>
-        <div class="split-row"><span class="split-row-lbl">Follower/Monat</span><span class="split-row-val">Ø ${Math.round(before.avgFoll)}</span></div>
-        <div class="split-row"><span class="split-row-lbl">Engagements/Monat</span><span class="split-row-val">Ø ${fmt(Math.round(before.avgEng))}</span></div>
+        <div class="split-row"><span class="split-row-lbl">Posts / Monat</span><span class="split-row-val">Ø ${before.avgPosts.toFixed(1)}</span></div>
+        <div class="split-row"><span class="split-row-lbl">Impressionen / Monat</span><span class="split-row-val">Ø ${fmtK(Math.round(before.avgImpr))}</span></div>
+        <div class="split-row"><span class="split-row-lbl">Neue Follower / Monat</span><span class="split-row-val">Ø ${Math.round(before.avgFoll)}</span></div>
+        <div class="split-row"><span class="split-row-lbl">Engagements / Monat</span><span class="split-row-val">Ø ${fmt(Math.round(before.avgEng))}</span></div>
       </div>
     </div>
-    <div class="split-div" style="background:${ci.primary};color:${ci.accent}">→</div>
+    <div class="split-div" style="background:${p};color:${acc}">→</div>
     <div class="split-side split-after">
       <div class="split-lbl">Nachher · ${after.label}</div>
       <div class="split-rows">
-        <div class="split-row"><span class="split-row-lbl">Posts/Monat</span><span class="split-row-val">Ø ${after.avgPosts.toFixed(1)}</span></div>
-        <div class="split-row"><span class="split-row-lbl">Impressionen/Monat</span><span class="split-row-val">Ø ${fmtK(Math.round(after.avgImpr))} <small>(+${imprGrowth}%)</small></span></div>
-        <div class="split-row"><span class="split-row-lbl">Follower/Monat</span><span class="split-row-val">Ø ${Math.round(after.avgFoll)} <small>(+${follGrowth}%)</small></span></div>
-        <div class="split-row"><span class="split-row-lbl">Engagements/Monat</span><span class="split-row-val">Ø ${fmt(Math.round(after.avgEng))}</span></div>
+        <div class="split-row"><span class="split-row-lbl">Posts / Monat</span><span class="split-row-val">Ø ${after.avgPosts.toFixed(1)}</span></div>
+        <div class="split-row"><span class="split-row-lbl">Impressionen / Monat</span><span class="split-row-val">Ø ${fmtK(Math.round(after.avgImpr))} <small style="color:#00A86B">(+${imprGrowth}%)</small></span></div>
+        <div class="split-row"><span class="split-row-lbl">Neue Follower / Monat</span><span class="split-row-val">Ø ${Math.round(after.avgFoll)} <small style="color:#00A86B">(+${follGrowth}%)</small></span></div>
+        <div class="split-row"><span class="split-row-lbl">Engagements / Monat</span><span class="split-row-val">Ø ${fmt(Math.round(after.avgEng))}</span></div>
       </div>
     </div>
   </div>`;
@@ -1605,52 +1633,84 @@ function buildDashHTML(c, ins) {
   <div class="section-hd"><span class="section-lbl">Reichweite & Wachstum</span><div class="section-line"></div></div>
   <div class="chart-card" style="margin-bottom:14px">
     <div class="chart-title">Impressionen pro Monat</div>
-    <div class="chart-sub">${c.splitLabel?'Rot = vor '+c.splitLabel+' · farbig = danach':'Monatliche Reichweite'}</div>
+    <div class="chart-sub">${beforeAfter?'Rot = vor Agentur-Start · farbig = nach Agentur-Start':'Monatliche Reichweite im Zeitverlauf'}</div>
+    ${beforeAfter?`<div class="legend"><div class="legend-item"><div class="legend-dot" style="background:#D93B3B"></div>Vor Zusammenarbeit</div><div class="legend-item"><div class="legend-dot" style="background:${p}"></div>Mit Zusammenarbeit</div></div>`:''}
     <div style="position:relative;height:220px"><canvas id="cImpr"></canvas></div>
   </div>
   <div class="chart-2">
-    <div class="chart-card"><div class="chart-title">Neue Follower</div><div style="position:relative;height:180px"><canvas id="cFoll"></canvas></div></div>
-    <div class="chart-card"><div class="chart-title">Engagements</div><div style="position:relative;height:180px"><canvas id="cEng"></canvas></div></div>
+    <div class="chart-card">
+      <div class="chart-title">Neue Follower pro Monat</div>
+      <div class="chart-sub">Zeitliche Entwicklung des Follower-Wachstums</div>
+      <div style="position:relative;height:180px"><canvas id="cFoll"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Engagements pro Monat</div>
+      <div class="chart-sub">Entwicklung der Community-Interaktion</div>
+      <div style="position:relative;height:180px"><canvas id="cEng"></canvas></div>
+    </div>
   </div>`;
 
   if (c.posts?.length) {
     html += `
-  <div class="section-hd"><span class="section-lbl">Top-Posts</span><div class="section-line"></div></div>
+  <div class="section-hd"><span class="section-lbl">Top-Posts nach Impressionen</span><div class="section-line"></div></div>
   <div class="chart-card" style="margin-bottom:14px">
-    <div class="chart-title">Beste Posts nach Impressionen</div>
+    <div class="chart-title">Beste Posts · Quelle: LinkedIn Analytics</div>
+    <div class="chart-sub">Farbe = Content-Typ</div>
+    <div class="legend" style="margin-bottom:14px">
+      <div class="legend-item"><div class="legend-dot" style="background:#00A86B"></div>Humor / Persönlich</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#5B63FE"></div>Tech / Trend</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#7B68EE"></div>Networking</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#6B7A99"></div>Story / Brand</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#FF6600"></div>Branchenwissen</div>
+    </div>
     <div class="posts-list">`;
-    c.posts.forEach((p,i) => {
-      const m = TYPE_META[p.type]||TYPE_META.story;
+    c.posts.forEach((post,i) => {
+      const tm = TYPE_META[post.type]||TYPE_META.story;
       const rc = i===0?'g':i===1?'s':i===2?'b':'';
       html += `<div class="post-row">
         <div class="post-rank ${rc}">#${i+1}</div>
-        <div><div class="post-cap">${p.caption}</div><div class="post-meta">${p.label}${p.comments?' · '+p.comments+' Kommentare':''}</div></div>
-        <div class="post-pill" style="background:${m.bg};color:${m.col}">${m.label}</div>
-        <div class="post-impr" style="color:${ci.primary}">${fmt(p.impr)}</div>
+        <div><div class="post-cap">${post.caption||'—'}</div><div class="post-meta">${post.label||''}${post.comments?' · '+post.comments+' Kommentare':''}</div></div>
+        <div class="post-pill" style="background:${tm.bg};color:${tm.col}">${tm.label}</div>
+        <div class="post-impr" style="color:${p}">${fmt(post.impr)}</div>
       </div>`;
     });
     html += `</div></div>
-  <div class="chart-card" style="margin-bottom:14px">
-    <div style="position:relative;height:${Math.min(380,c.posts.length*42+60)}px"><canvas id="cPosts"></canvas></div>
+  <div class="chart-card" style="margin-bottom:1.5rem">
+    <div class="chart-title">Impressionen Top-Posts — visualisiert</div>
+    <div style="position:relative;height:${Math.min(400,c.posts.length*44+60)}px"><canvas id="cPosts"></canvas></div>
   </div>`;
   }
 
   html += `
-  <div class="section-hd"><span class="section-lbl">Automatische Insights & Empfehlungen</span><div class="section-line"></div></div>
-  <div class="insight-grid">`;
-  recs.forEach(r => {
-    html += `<div class="insight-card">
-      <div class="insight-stripe" style="background:${r.color}"></div>
-      <div class="insight-badge" style="background:${r.badgeBg};color:${r.badgeCol}">${r.badge}</div>
-      <div class="insight-val" style="color:${r.color}">${r.val}</div>
-      <div class="insight-title">${r.title}</div>
-      <div class="insight-body">${r.body}</div>
-      <div class="insight-rec" style="color:${r.color}">→ ${r.rec}</div>
+  <div class="section-hd"><span class="section-lbl">Content-Strategie · Was die Daten sagen</span><div class="section-line"></div></div>
+  <div class="strat-grid">`;
+  recs.forEach((r,i) => {
+    html += `<div class="strat-card">
+      <div class="strat-accent" style="background:${r.color}"></div>
+      <button class="strat-edit-btn" onclick="editRec(${i})">✏️ Bearbeiten</button>
+      <div class="strat-badge" style="background:${r.badgeBg};color:${r.badgeCol}">${r.badge}</div>
+      <div class="strat-val" style="color:${r.color}">${r.val}</div>
+      <div class="strat-title">${r.title}</div>
+      <div class="strat-body">${r.body}</div>
+      <div class="strat-rec"><span style="color:${r.color}">→</span> ${r.rec}</div>
     </div>`;
   });
   html += `</div>
+
+  <div class="section-hd"><span class="section-lbl">Empfohlener Content-Mix pro Monat</span><div class="section-line"></div></div>
+  <div class="mix-grid">`;
+  mix.forEach((mx,i) => {
+    html += `<div class="mix-card">
+      <button class="mix-edit-btn" onclick="editMix(${i})">✏️</button>
+      <div class="mix-num" style="color:${mx.color}">${mx.num}</div>
+      <div class="mix-title">${mx.title}</div>
+      <div class="mix-sub">${mx.sub}</div>
+    </div>`;
+  });
+  html += `</div>
+
   <div style="text-align:center;font-size:11px;color:var(--muted);padding:2rem 0 0;border-top:1px solid var(--border);margin-top:2rem">
-    Erstellt von <strong style="color:${ci.primary}">${ci.agency}</strong> · LinkedIn Analytics · ${ci.period}
+    Erstellt von <strong style="color:${p}">${ci.agency||'Branding People'}</strong> · LinkedIn Analytics · ${ci.period||''}
   </div>`;
 
   return html;
@@ -1699,26 +1759,23 @@ const charts = CHARTS;
 // ══════════════════════════════════════════
 //  ANALYSIS ENGINE
 // ══════════════════════════════════════════
-function analyze(monthly, splitLabel) {
+function analyze(monthly, splitLabel, primary) {
   const {labels,impressions,followers,engagements,postsPerMonth} = monthly;
   const n = labels.length;
   const totalImpr = sum(impressions), totalFoll = sum(followers), totalEng = sum(engagements);
   const totalPosts = sum(postsPerMonth);
   const avgEngRate = totalImpr > 0 ? totalEng/totalImpr*100 : 0;
   const avgPostsPerMonth = n > 0 ? totalPosts/n : 0;
-
   const bestImprIdx = impressions.indexOf(Math.max(...impressions));
   const third = Math.max(1,Math.floor(n/3));
   const firstAvg = avg(impressions.slice(0,third)), lastAvg = avg(impressions.slice(-third));
   const trendPct = firstAvg > 0 ? Math.round((lastAvg-firstAvg)/firstAvg*100) : 0;
   const trend = trendPct>15?'wachsend':trendPct<-15?'rückläufig':'stabil';
-
   let engLabel, engColor;
   if (avgEngRate>=4)      {engLabel='Exzellent';engColor='#00A86B';}
   else if (avgEngRate>=2) {engLabel='Gut';engColor='#00A86B';}
   else if (avgEngRate>=1) {engLabel='Durchschnitt';engColor='#F59E0B';}
   else                    {engLabel='Unter Benchmark';engColor='#E03B3B';}
-
   let beforeAfter = null;
   if (splitLabel) {
     const si = labels.indexOf(splitLabel);
@@ -1728,45 +1785,52 @@ function analyze(monthly, splitLabel) {
       beforeAfter = { before:b, after:a, imprGrowth:b.avgImpr>0?Math.round((a.avgImpr-b.avgImpr)/b.avgImpr*100):0, follGrowth:b.avgFoll>0?Math.round((a.avgFoll-b.avgFoll)/b.avgFoll*100):0, splitIdx:si };
     }
   }
-
-  const recs = [];
-  if (trend==='wachsend') {
-    recs.push({ color:'#00A86B',badgeBg:'#E8F8F2',badgeCol:'#00624A',badge:'Wachstum',
-      val:`+${trendPct}% Trend`,title:'Momentum beibehalten',
-      body:`Die Reichweite wächst — bester Monat war ${labels[bestImprIdx]} mit ${fmt(impressions[bestImprIdx])} Impressionen. Analysiere, welche Inhalte diesen Monat gepusht haben, und wiederhole dieses Format gezielt.`,
-      rec:`Bestseller-Format identifizieren & monatlich wiederholen` });
-  } else if (trend==='rückläufig') {
-    recs.push({ color:'#E03B3B',badgeBg:'#FFE8E8',badgeCol:'#8A0000',badge:'Handlungsbedarf',
-      val:`${trendPct}% Trend`,title:'Content-Format überdenken',
-      body:`Die Reichweite ist rückläufig. Höchstwert war ${labels[bestImprIdx]} (${fmt(impressions[bestImprIdx])} Impressionen). Ein A/B-Test mit persönlichen Geschichten, Branchen-News oder Umfragen kann die Kurve drehen.`,
-      rec:`Neues Format testen: 1× persönlicher Post + 1× Meinungs-Post pro Monat` });
-  } else {
-    recs.push({ color:'#F59E0B',badgeBg:'#FFF0E8',badgeCol:'#7A3000',badge:'Potenzial',
-      val:'Stabiler Verlauf',title:'Nächste Wachstumsstufe',
-      body:`Stabile Performance, aber ungenutztes Potenzial. Durch konsequenteren Rhythmus (6–8×/Monat) und gezielte Branchen-Trend-Reaktionen lässt sich die Reichweite systematisch steigern.`,
-      rec:`Posting-Frequenz auf ${Math.max(6,Math.round(avgPostsPerMonth)+2)}×/Monat erhöhen` });
-  }
-
-  if (avgEngRate >= 3) {
-    recs.push({ color:'#5B63FE',badgeBg:'#EEEFFE',badgeCol:'#2D3561',badge:'Engagement',
-      val:`${avgEngRate.toFixed(1)}% Ø Rate`,title:'Starke Community-Bindung',
-      body:`${avgEngRate.toFixed(1)}% liegt ${avgEngRate>=4?'weit ':''}über dem B2B-Benchmark (1–2%). Das zeigt echtes Follower-Interesse. Antworte auf jeden Kommentar — das befeuert den LinkedIn-Algorithmus zusätzlich.`,
-      rec:`Kommentare aktiv beantworten → Algorithmus-Boost nutzen` });
-  } else {
-    recs.push({ color:'#F59E0B',badgeBg:'#FFF9D6',badgeCol:'#7A5C00',badge:'Engagement',
-      val:`${avgEngRate.toFixed(1)}% Ø Rate`,title:'Engagement-Rate steigern',
-      body:`Mit ${avgEngRate.toFixed(1)}% liegt die Rate ${avgEngRate>=1?'im':'unter dem'} B2B-Durchschnitt. Direktere Fragen am Ende jedes Posts, Umfragen und persönliche Standpunkte steigern die Interaktion signifikant.`,
-      rec:`Jeden Post mit einer konkreten Frage an die Community beenden` });
-  }
-
-  recs.push({ color:'#00A86B',badgeBg:'#E8F8F2',badgeCol:'#00624A',badge:'Frequenz',
-    val:`Ø ${avgPostsPerMonth>0?avgPostsPerMonth.toFixed(1):'?'} Posts/Monat`,title:'Content-Kadenz',
-    body:avgPostsPerMonth>0
-      ?`Im Schnitt ${avgPostsPerMonth.toFixed(1)} Posts/Monat. LinkedIn belohnt Konstanz: ein gleichmäßiger Rhythmus von 6–8 Posts/Monat erzielt mehr organische Reichweite als sporadische Hochphasen.`
-      :`Ein regelmäßiger Rhythmus (6–8 Posts/Monat, verteilt auf 1–2 je Woche) ist einer der stärksten Hebel für organische LinkedIn-Reichweite.`,
-    rec:avgPostsPerMonth<5?`Frequenz auf 6–8×/Monat steigern`:avgPostsPerMonth<8?`Frequenz halten, Qualität steigern`:`Qualität über Quantität priorisieren` });
-
-  return { totalImpr, totalFoll, totalEng, avgEngRate, avgPostsPerMonth, bestImprIdx, trendPct, trend, engLabel, engColor, beforeAfter, recs, n };
+  const p = primary || '#5B63FE';
+  // Auto-generate recommendations
+  const recommendations = [
+    trend==='wachsend' ? {
+      color:'#00A86B', badgeBg:'#E8F8F2', badgeCol:'#00624A', badge:'Reichweite',
+      val:`+${trendPct}% Wachstum`, title:'Momentum ausbauen',
+      body:`Bester Monat: ${labels[bestImprIdx]} mit ${fmt(impressions[bestImprIdx])} Impressionen. Das erfolgreiche Format gezielt wiederholen und ausbauen — Konsistenz ist der stärkste Wachstumshebel auf LinkedIn.`,
+      rec:`Bestseller-Format 1× pro Monat wiederholen`
+    } : trend==='rückläufig' ? {
+      color:'#E03B3B', badgeBg:'#FFE8E8', badgeCol:'#8A0000', badge:'Handlungsbedarf',
+      val:`${trendPct}% Rückgang`, title:'Content-Strategie anpassen',
+      body:`Reichweite ist rückläufig. Bester Monat war ${labels[bestImprIdx]} (${fmt(impressions[bestImprIdx])} Impressionen). Persönliche Geschichten, klare Meinungen und Branchentrends reaktivieren die Reichweite nachhaltig.`,
+      rec:`Neues Format testen: 1× persönlicher Post + 1× Meinung pro Monat`
+    } : {
+      color:'#F59E0B', badgeBg:'#FFF0E8', badgeCol:'#7A3000', badge:'Potenzial',
+      val:'Stabiler Verlauf', title:'Nächste Wachstumsstufe',
+      body:`Stabile Performance, aber ungenutztes Potenzial. Bester Monat: ${labels[bestImprIdx]} (${fmt(impressions[bestImprIdx])} Impressionen). Durch höhere Frequenz und gezielte Engagement-Trigger lässt sich die Kurve deutlich nach oben biegen.`,
+      rec:`Posting-Frequenz auf ${Math.max(6,Math.round(avgPostsPerMonth)+2)}× / Monat steigern`
+    },
+    avgEngRate >= 3 ? {
+      color:'#5B63FE', badgeBg:'#EEEFFE', badgeCol:'#2D3561', badge:'Engagement',
+      val:`${avgEngRate.toFixed(1)}% Ø Rate`, title:'Starke Community-Bindung',
+      body:`${avgEngRate.toFixed(1)}% liegt ${avgEngRate>=4?'weit ':''}über dem B2B-Benchmark von 1–2%. Die Follower sind aktiv und interessiert. Jeder Kommentar der beantwortet wird befeuert den LinkedIn-Algorithmus zusätzlich.`,
+      rec:`Kommentare aktiv beantworten innerhalb von 2 Stunden`
+    } : {
+      color:'#F59E0B', badgeBg:'#FFF9D6', badgeCol:'#7A5C00', badge:'Engagement',
+      val:`${avgEngRate.toFixed(1)}% Ø Rate`, title:'Engagement-Rate steigern',
+      body:`Mit ${avgEngRate.toFixed(1)}% liegt die Rate ${avgEngRate>=1?'im Durchschnitt':'unter dem'} B2B-Benchmark (1–2%). Jeder Post sollte mit einer konkreten Frage enden. Umfragen und persönliche Standpunkte steigern die Interaktion signifikant.`,
+      rec:`Jeden Post mit einer direkten Frage an die Community beenden`
+    },
+    {
+      color: p, badgeBg: p+'22', badgeCol: p, badge:'Frequenz',
+      val:`Ø ${avgPostsPerMonth>0?avgPostsPerMonth.toFixed(1):'—'} Posts / Monat`, title:'Content-Kadenz optimieren',
+      body: avgPostsPerMonth >= 6
+        ? `Mit Ø ${avgPostsPerMonth.toFixed(1)} Posts / Monat ist der Rhythmus stark. LinkedIn belohnt Konstanz — diesen Takt halten und die Qualität durch bessere Hooks und klare Kernaussagen weiter steigern.`
+        : `Ein regelmäßiger Rhythmus von 6–8 Posts / Monat ist einer der stärksten Hebel für organische LinkedIn-Reichweite. Aktuell Ø ${avgPostsPerMonth.toFixed(1)} Posts — hier liegt das größte Wachstumspotenzial.`,
+      rec: avgPostsPerMonth < 6 ? `Frequenz schrittweise auf 6–8× / Monat erhöhen` : `Qualität weiter steigern: starke Hook in Zeile 1`
+    }
+  ];
+  const contentMix = [
+    { num:'1×', color:'#00A86B', title:'Persönlich / Humor', sub:'Reichweite maximieren' },
+    { num:'2×', color:p, title:'Extern / Trend', sub:'Neue Zielgruppen erschließen' },
+    { num:'1×', color:'#C89500', title:'Meinung / Daten', sub:'Thought Leadership aufbauen' },
+    { num:'4+', color:'#6E7A9F', title:'Brand / Events', sub:'Basis-Rhythmus halten' },
+  ];
+  return { totalImpr, totalFoll, totalEng, avgEngRate, avgPostsPerMonth, bestImprIdx, trendPct, trend, engLabel, engColor, beforeAfter, recommendations, contentMix, n };
 }
 
 // ══════════════════════════════════════════
@@ -1876,10 +1940,94 @@ function contrastColor(hex) {
   catch { return '#FFFFFF'; }
 }
 
+function editRec(i) {
+  const c = getClient(ROUTE.clientId); if(!c) return;
+  const r = c.recommendations[i];
+  document.getElementById('recIdx').value = i;
+  document.getElementById('rec_badge').value = r.badge||'';
+  document.getElementById('rec_val').value   = r.val||'';
+  document.getElementById('rec_title').value = r.title||'';
+  document.getElementById('rec_body').value  = r.body||'';
+  document.getElementById('rec_rec').value   = r.rec||'';
+  openModal('recModal');
+}
+function saveRec() {
+  const c = getClient(ROUTE.clientId); if(!c) return;
+  const i = parseInt(document.getElementById('recIdx').value);
+  c.recommendations[i] = { ...c.recommendations[i],
+    badge: document.getElementById('rec_badge').value,
+    val:   document.getElementById('rec_val').value,
+    title: document.getElementById('rec_title').value,
+    body:  document.getElementById('rec_body').value,
+    rec:   document.getElementById('rec_rec').value,
+  };
+  c.updatedAt = Date.now(); saveApp();
+  closeModal('recModal'); navigate('dash', ROUTE.clientId);
+  showToast('Empfehlung gespeichert', 'ok');
+}
+function editMix(i) {
+  const c = getClient(ROUTE.clientId); if(!c) return;
+  const mx = c.contentMix[i];
+  document.getElementById('mixIdx').value    = i;
+  document.getElementById('mix_num').value   = mx.num||'';
+  document.getElementById('mix_color').value = mx.color||'#5B63FE';
+  document.getElementById('mix_title').value = mx.title||'';
+  document.getElementById('mix_sub').value   = mx.sub||'';
+  openModal('mixModal');
+}
+function saveMix() {
+  const c = getClient(ROUTE.clientId); if(!c) return;
+  const i = parseInt(document.getElementById('mixIdx').value);
+  c.contentMix[i] = {
+    num:   document.getElementById('mix_num').value,
+    color: document.getElementById('mix_color').value,
+    title: document.getElementById('mix_title').value,
+    sub:   document.getElementById('mix_sub').value,
+  };
+  c.updatedAt = Date.now(); saveApp();
+  closeModal('mixModal'); navigate('dash', ROUTE.clientId);
+  showToast('Content-Mix gespeichert', 'ok');
+}
+
 // ══════════════════════════════════════════
 //  BOOT
 // ══════════════════════════════════════════
 renderApp();
 </script>
+<div class="overlay" id="recModal">
+  <div class="modal">
+    <div class="modal-h"><h3>✏️ Empfehlung bearbeiten</h3><button class="modal-x" onclick="closeModal('recModal')">✕</button></div>
+    <div class="modal-b">
+      <input type="hidden" id="recIdx">
+      <div class="form-group"><label class="form-label">Badge (z.B. Reichweite)</label><input class="form-input" id="rec_badge"></div>
+      <div class="form-group"><label class="form-label">Kennzahl (z.B. Ø 67K Impr.)</label><input class="form-input" id="rec_val"></div>
+      <div class="form-group"><label class="form-label">Titel</label><input class="form-input" id="rec_title"></div>
+      <div class="form-group"><label class="form-label">Beschreibung</label><textarea class="form-input" id="rec_body" rows="4" style="resize:vertical"></textarea></div>
+      <div class="form-group"><label class="form-label">Empfehlung (der Text nach dem →)</label><input class="form-input" id="rec_rec"></div>
+    </div>
+    <div class="modal-f">
+      <button class="btn" onclick="closeModal('recModal')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="saveRec()">💾 Speichern</button>
+    </div>
+  </div>
+</div>
+<div class="overlay" id="mixModal">
+  <div class="modal">
+    <div class="modal-h"><h3>✏️ Content-Mix bearbeiten</h3><button class="modal-x" onclick="closeModal('mixModal')">✕</button></div>
+    <div class="modal-b">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Anzahl (z.B. 2×)</label><input class="form-input" id="mix_num"></div>
+        <div class="form-group"><label class="form-label">Farbe</label><input class="form-input" type="color" id="mix_color"></div>
+      </div>
+      <input type="hidden" id="mixIdx">
+      <div class="form-group"><label class="form-label">Titel</label><input class="form-input" id="mix_title"></div>
+      <div class="form-group"><label class="form-label">Untertitel</label><input class="form-input" id="mix_sub"></div>
+    </div>
+    <div class="modal-f">
+      <button class="btn" onclick="closeModal('mixModal')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="saveMix()">💾 Speichern</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
