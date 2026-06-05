@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-32 -->
+<!-- v20260603-33 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-32';
+  const MY_V = 'v20260603-33';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -557,7 +557,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-32</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-33</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -700,11 +700,29 @@ const ROUTE = { view: 'home', clientId: null, step: 'ci' };
 // ══════════════════════════════════════════
 //  SHARE LINK
 // ══════════════════════════════════════════
+function shareEncode(obj) {
+  const json = JSON.stringify(obj);
+  // Use TextEncoder for robust UTF-8 handling
+  const bytes = new TextEncoder().encode(json);
+  let bin = '';
+  bytes.forEach(b => bin += String.fromCharCode(b));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+function shareDecode(encoded) {
+  const b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = b64 + '=='.slice(0, (4 - b64.length % 4) % 4);
+  const bin = atob(pad);
+  const bytes = Uint8Array.from(bin, ch => ch.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
 function copyShareLink(clientId) {
   const c = getClient(clientId);
   if (!c) return;
+  // Exclude logoImg (can be huge base64 image) — use logo letter instead
+  const ciClean = { ...c.ci, logoImg: '' };
   const payload = {
-    ci: c.ci, monthly: c.monthly,
+    ci: ciClean, monthly: c.monthly,
     posts: c.posts || [], flopPosts: c.flopPosts || [],
     splitLabel: c.splitLabel || '',
     recommendations: c.recommendations || null,
@@ -712,15 +730,14 @@ function copyShareLink(clientId) {
     customNote: c.customNote || '',
   };
   try {
-    // URL-safe base64: replace +/= with URL-safe chars
-    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-    const base = location.href.split('?')[0].split('#')[0];
+    const encoded = shareEncode(payload);
+    // Always use the GitHub Pages URL, not local file://
+    const base = 'https://celinealessa.github.io/linkedin-studio/';
     const url = base + '?share=' + encoded;
     navigator.clipboard.writeText(url).then(() => {
       showToast('🔗 Kunden-Link kopiert! Per E-Mail an den Kunden senden.', 'ok');
     }).catch(() => { prompt('Link kopieren:', url); });
-  } catch(e) { showToast('Fehler: ' + e.message, 'warn'); }
+  } catch(e) { showToast('Fehler beim Erstellen des Links: ' + e.message, 'warn'); }
 }
 
 function checkShareParam() {
@@ -728,10 +745,7 @@ function checkShareParam() {
   const encoded = params.get('share');
   if (!encoded) return false;
   try {
-    // Restore URL-safe base64 back to standard base64
-    const b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = b64 + '=='.slice(0, (4 - b64.length % 4) % 4);
-    const c = JSON.parse(decodeURIComponent(escape(atob(padded))));
+    const c = shareDecode(encoded);
     renderSharedDashboard(c);
     return true;
   } catch(e) {
