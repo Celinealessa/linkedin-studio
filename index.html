@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-30 -->
+<!-- v20260603-31 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-30';
+  const MY_V = 'v20260603-31';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -557,7 +557,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-30</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-31</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -698,6 +698,79 @@ function newClient() {
 const ROUTE = { view: 'home', clientId: null, step: 'ci' };
 
 // ══════════════════════════════════════════
+//  SHARE LINK
+// ══════════════════════════════════════════
+function copyShareLink(clientId) {
+  const c = getClient(clientId);
+  if (!c) return;
+  const payload = {
+    ci: c.ci, monthly: c.monthly,
+    posts: c.posts || [], flopPosts: c.flopPosts || [],
+    splitLabel: c.splitLabel || '',
+    recommendations: c.recommendations || null,
+    contentMix: c.contentMix || null,
+    customNote: c.customNote || '',
+  };
+  try {
+    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+    const base = location.href.split('?')[0].split('#')[0];
+    const url = base + '?share=' + encoded;
+    navigator.clipboard.writeText(url).then(() => {
+      showToast('🔗 Kunden-Link kopiert! Per E-Mail an den Kunden senden.', 'ok');
+    }).catch(() => { prompt('Link kopieren:', url); });
+  } catch(e) { showToast('Fehler: ' + e.message, 'warn'); }
+}
+
+function checkShareParam() {
+  const params = new URLSearchParams(location.search);
+  const encoded = params.get('share');
+  if (!encoded) return false;
+  try {
+    const c = JSON.parse(decodeURIComponent(escape(atob(encoded))));
+    renderSharedDashboard(c);
+    return true;
+  } catch(e) {
+    document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'DM Sans',sans-serif;color:#666;flex-direction:column;gap:12px">
+      <div style="font-size:48px">⚠️</div>
+      <div style="font-size:18px;font-weight:600">Link ungültig oder abgelaufen</div>
+      <div style="font-size:13px">Bitte einen neuen Link anfordern.</div></div>`;
+    return true;
+  }
+}
+
+function renderSharedDashboard(c) {
+  const ci = c.ci || {};
+  const p = ci.primary || '#5B63FE';
+  const ins = c.monthly ? analyze(c.monthly, c.splitLabel, p, c.posts, c.flopPosts) : null;
+  document.getElementById('app').style.display = 'none';
+  const wrap = document.createElement('div');
+  wrap.id = 'sharedView';
+  wrap.style.cssText = 'min-height:100vh;background:#F4F5FF;font-family:"DM Sans",sans-serif';
+  wrap.innerHTML = `
+    <div style="background:${p};color:#fff;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.15)">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:32px;height:32px;border-radius:8px;background:${ci.accent||'#fff'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:${p}">${ci.logo||ci.client?.charAt(0)||'?'}</div>
+        <div><div style="font-weight:700;font-size:15px">${ci.client||'Dashboard'}</div><div style="font-size:11px;opacity:0.8">${ci.period||''}</div></div>
+      </div>
+      <div style="font-size:11px;opacity:0.75">Erstellt von ${ci.agency||'Branding People GmbH'}</div>
+    </div>
+    <div id="sharedDashContent" style="max-width:920px;margin:0 auto;padding:24px 16px"></div>`;
+  document.body.appendChild(wrap);
+  if (!ins) { document.getElementById('sharedDashContent').innerHTML = `<div style="text-align:center;padding:60px;color:#888">Keine Daten vorhanden.</div>`; return; }
+  const tempId = '__shared__';
+  c.id = tempId;
+  if (!APP.clients) APP.clients = [];
+  const ei = APP.clients.findIndex(x => x.id === tempId);
+  if (ei >= 0) APP.clients[ei] = c; else APP.clients.push(c);
+  const prevId = ROUTE.clientId, prevView = ROUTE.view;
+  ROUTE.clientId = tempId; ROUTE.view = 'dash';
+  renderDash(document.getElementById('sharedDashContent'));
+  const ta = document.getElementById('topbarActions');
+  if (ta) ta.innerHTML = `<button class="btn btn-sm" onclick="window.print()">🖨️ PDF drucken</button>`;
+  ROUTE.clientId = prevId; ROUTE.view = prevView;
+}
+
+// ══════════════════════════════════════════
 //  NAVIGATION
 // ══════════════════════════════════════════
 function navigate(view, clientId, step) {
@@ -743,6 +816,7 @@ function updateTopbar(view) {
     ta.innerHTML = `
       <button class="btn btn-sm" onclick="navigate('edit','${ROUTE.clientId}')">✏️ Bearbeiten</button>
       <button class="btn btn-sm" onclick="window.print()">🖨️ PDF</button>
+      <button class="btn btn-sm" onclick="copyShareLink('${ROUTE.clientId}')" title="Link für den Kunden kopieren">🔗 Kunden-Link</button>
       <button class="btn btn-primary btn-sm" onclick="saveAsHTML()">💾 HTML speichern</button>`;
   }
 }
@@ -2841,7 +2915,7 @@ function saveMix() {
 // ══════════════════════════════════════════
 //  BOOT
 // ══════════════════════════════════════════
-renderApp();
+if (!checkShareParam()) { renderApp(); }
 </script>
 <div class="overlay" id="recModal">
   <div class="modal" style="max-width:520px">
