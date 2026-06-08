@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-37 -->
+<!-- v20260603-38 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-37';
+  const MY_V = 'v20260603-38';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -559,7 +559,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-37</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-38</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -2397,9 +2397,12 @@ function buildDashHTML(c, ins) {
   if (beforeAfter && c.splitLabel) {
     const {before,after,imprGrowth,follGrowth,splitIdx} = beforeAfter;
     const afterMonths = ins.n - splitIdx;
-    const totalAfterImpr = sum(c.monthly.impressions.slice(splitIdx));
-    const totalAfterFoll = sum(c.monthly.followers.slice(splitIdx));
-    const totalAfterEng  = sum(c.monthly.engagements.slice(splitIdx));
+    const totalAfterImpr  = sum(c.monthly.impressions.slice(splitIdx));
+    const totalAfterFoll  = sum(c.monthly.followers.slice(splitIdx));
+    const totalAfterEng   = sum(c.monthly.engagements.slice(splitIdx));
+    const totalAfterPosts = sum(c.monthly.postsPerMonth.slice(splitIdx));
+    // Fallback: count posts from c.posts whose label/date falls on or after splitLabel
+    const postsCount = totalAfterPosts > 0 ? totalAfterPosts : (c.posts||[]).length + (c.flopPosts||[]).length;
     const imprSign = imprGrowth >= 0 ? '+' : '';
     const follSign = follGrowth >= 0 ? '+' : '';
     html += `
@@ -2423,7 +2426,7 @@ function buildDashHTML(c, ins) {
       <div style="min-height:0">
         <div style="background:#fff;border:1px solid ${p}33;border-top:none;border-radius:0 0 12px 12px;padding:20px 24px">
           <div style="font-size:12px;color:var(--muted);margin-bottom:16px;font-weight:600;text-transform:uppercase;letter-spacing:.07em">Gesamtergebnis seit ${c.splitLabel}</div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
             <div style="background:#F0FBF7;border-radius:10px;padding:14px 16px;text-align:center">
               <div style="font-size:22px;font-weight:800;color:#00A86B">${fmtK(totalAfterImpr)}</div>
               <div style="font-size:11px;color:#00624A;margin-top:2px">Impressionen gesamt</div>
@@ -2438,6 +2441,11 @@ function buildDashHTML(c, ins) {
               <div style="font-size:22px;font-weight:800;color:#C89500">${fmtK(totalAfterEng)}</div>
               <div style="font-size:11px;color:#856404;margin-top:2px">Engagements gesamt</div>
               <div style="font-size:11px;color:#C89500;margin-top:4px;font-weight:600">Ø ${fmt(Math.round(totalAfterEng/afterMonths))} / Monat</div>
+            </div>
+            <div style="background:#F5F0FF;border-radius:10px;padding:14px 16px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:#7B2FBE">${postsCount}</div>
+              <div style="font-size:11px;color:#5B1FA0;margin-top:2px">Beiträge veröffentlicht</div>
+              <div style="font-size:11px;color:#7B2FBE;margin-top:4px;font-weight:600">Ø ${(postsCount/afterMonths).toFixed(1)} / Monat</div>
             </div>
           </div>
           ${totalFollowersNow ? `<div style="background:#F4F5FF;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
