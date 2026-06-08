@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-39 -->
+<!-- v20260603-40 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-39';
+  const MY_V = 'v20260603-40';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -559,7 +559,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-39</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-40</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -2416,13 +2416,23 @@ function buildDashHTML(c, ins) {
           <div style="font-size:11px;opacity:0.85">ab ${c.splitLabel} · ${afterMonths} Monate · aufklappen für Details</div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:16px">
-        <div style="text-align:center"><div style="font-size:18px;font-weight:800">${imprSign}${imprGrowth}%</div><div style="font-size:9px;opacity:0.8;text-transform:uppercase;letter-spacing:.06em">Impressionen</div></div>
-        <div style="text-align:center"><div style="font-size:18px;font-weight:800">${follSign}${follGrowth}%</div><div style="font-size:9px;opacity:0.8;text-transform:uppercase;letter-spacing:.06em">Follower</div></div>
-        <span class="collab-arrow" style="font-size:18px;transition:transform .25s">▾</span>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="text-align:center;background:rgba(255,255,255,0.15);border-radius:8px;padding:6px 12px">
+          <div style="font-size:16px;font-weight:800">${fmtK(totalAfterImpr)}</div>
+          <div style="font-size:9px;opacity:0.85;text-transform:uppercase;letter-spacing:.06em">Impressionen <span style="font-size:9px">(${imprSign}${imprGrowth}%)</span></div>
+        </div>
+        <div style="text-align:center;background:rgba(255,255,255,0.15);border-radius:8px;padding:6px 12px">
+          <div style="font-size:16px;font-weight:800">${fmt(totalAfterFoll)}</div>
+          <div style="font-size:9px;opacity:0.85;text-transform:uppercase;letter-spacing:.06em">Follower <span style="font-size:9px">(${follSign}${follGrowth}%)</span></div>
+        </div>
+        <div style="text-align:center;background:rgba(255,255,255,0.15);border-radius:8px;padding:6px 12px">
+          <div style="font-size:16px;font-weight:800">${fmtK(totalAfterEng)}</div>
+          <div style="font-size:9px;opacity:0.85;text-transform:uppercase;letter-spacing:.06em">Engagement</div>
+        </div>
+        <span class="collab-arrow" style="font-size:18px;transition:transform .25s;margin-left:4px">▾</span>
       </div>
     </button>
-    <div class="collab-body" style="display:grid;grid-template-rows:0fr;transition:grid-template-rows .3s;overflow:hidden">
+    <div class="collab-body">
       <div style="min-height:0">
         <div style="background:#fff;border:1px solid ${p}33;border-top:none;border-radius:0 0 12px 12px;padding:20px 24px">
           <div style="font-size:12px;color:var(--muted);margin-bottom:16px;font-weight:600;text-transform:uppercase;letter-spacing:.07em">Gesamtergebnis seit ${c.splitLabel}</div>
