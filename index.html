@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-38 -->
+<!-- v20260603-39 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-38';
+  const MY_V = 'v20260603-39';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -559,7 +559,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-38</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-39</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -2458,29 +2458,43 @@ function buildDashHTML(c, ins) {
   </div>`;
   }
 
-  // ── Vorher / Nachher Vergleich (Ø pro Monat)
+  // ── Vorher / Nachher Vergleich (Ø pro Monat) — aufklappbar
   if (beforeAfter) {
     const {before,after,imprGrowth,follGrowth} = beforeAfter;
     html += `
-  <div class="section-hd"><span class="section-lbl">Vorher vs. Nachher</span><div class="section-line"></div></div>
-  <div class="split">
-    <div class="split-side split-before">
-      <div class="split-lbl">Vorher · ${before.label}</div>
-      <div class="split-rows">
-        ${before.avgPosts>0?`<div class="split-row"><span class="split-row-lbl">Posts / Monat</span><span class="split-row-val">Ø ${before.avgPosts.toFixed(1)}</span></div>`:''}
-        <div class="split-row"><span class="split-row-lbl">Impressionen / Monat</span><span class="split-row-val">Ø ${fmtK(Math.round(before.avgImpr))}</span></div>
-        <div class="split-row"><span class="split-row-lbl">Neue Follower / Monat</span><span class="split-row-val">Ø ${Math.round(before.avgFoll)}</span></div>
-        <div class="split-row"><span class="split-row-lbl">Engagements / Monat</span><span class="split-row-val">Ø ${fmt(Math.round(before.avgEng))}</span></div>
+  <div style="margin-bottom:1.25rem">
+    <button onclick="const b=this.parentElement.querySelector('.split-body');b.classList.toggle('open');this.querySelector('.split-arrow').style.transform=b.classList.contains('open')?'rotate(180deg)':'rotate(0deg)'"
+      style="width:100%;display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 18px;cursor:pointer;font-family:'DM Sans',sans-serif;box-shadow:var(--shadow)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:16px">⚖️</span>
+        <span style="font-weight:600;font-size:14px;color:var(--text)">Vorher vs. Nachher · Ø pro Monat</span>
+        <span style="font-size:12px;color:var(--muted)">${before.label} → ${after.label}</span>
       </div>
-    </div>
-    <div class="split-div" style="background:${p};color:${acc}">→</div>
-    <div class="split-side split-after">
-      <div class="split-lbl">Nachher · ${after.label}</div>
-      <div class="split-rows">
-        ${after.avgPosts>0?`<div class="split-row"><span class="split-row-lbl">Posts / Monat</span><span class="split-row-val">Ø ${after.avgPosts.toFixed(1)}</span></div>`:''}
-        <div class="split-row"><span class="split-row-lbl">Impressionen / Monat</span><span class="split-row-val">Ø ${fmtK(Math.round(after.avgImpr))} <small style="color:#00A86B">(+${imprGrowth}%)</small></span></div>
-        <div class="split-row"><span class="split-row-lbl">Neue Follower / Monat</span><span class="split-row-val">Ø ${Math.round(after.avgFoll)} <small style="color:#00A86B">(+${follGrowth}%)</small></span></div>
-        <div class="split-row"><span class="split-row-lbl">Engagements / Monat</span><span class="split-row-val">Ø ${fmt(Math.round(after.avgEng))}</span></div>
+      <span class="split-arrow" style="font-size:18px;color:var(--muted);transition:transform .25s">▾</span>
+    </button>
+    <div class="split-body collab-body">
+      <div style="min-height:0">
+        <div class="split" style="border-radius:0 0 12px 12px;border-top:none;margin-top:0">
+          <div class="split-side split-before">
+            <div class="split-lbl">Vorher · ${before.label}</div>
+            <div class="split-rows">
+              ${before.avgPosts>0?`<div class="split-row"><span class="split-row-lbl">Posts / Monat</span><span class="split-row-val">Ø ${before.avgPosts.toFixed(1)}</span></div>`:''}
+              <div class="split-row"><span class="split-row-lbl">Impressionen / Monat</span><span class="split-row-val">Ø ${fmtK(Math.round(before.avgImpr))}</span></div>
+              <div class="split-row"><span class="split-row-lbl">Neue Follower / Monat</span><span class="split-row-val">Ø ${Math.round(before.avgFoll)}</span></div>
+              <div class="split-row"><span class="split-row-lbl">Engagements / Monat</span><span class="split-row-val">Ø ${fmt(Math.round(before.avgEng))}</span></div>
+            </div>
+          </div>
+          <div class="split-div" style="background:${p};color:${acc}">→</div>
+          <div class="split-side split-after">
+            <div class="split-lbl">Nachher · ${after.label}</div>
+            <div class="split-rows">
+              ${after.avgPosts>0?`<div class="split-row"><span class="split-row-lbl">Posts / Monat</span><span class="split-row-val">Ø ${after.avgPosts.toFixed(1)}</span></div>`:''}
+              <div class="split-row"><span class="split-row-lbl">Impressionen / Monat</span><span class="split-row-val">Ø ${fmtK(Math.round(after.avgImpr))} <small style="color:#00A86B">(+${imprGrowth}%)</small></span></div>
+              <div class="split-row"><span class="split-row-lbl">Neue Follower / Monat</span><span class="split-row-val">Ø ${Math.round(after.avgFoll)} <small style="color:#00A86B">(+${follGrowth}%)</small></span></div>
+              <div class="split-row"><span class="split-row-lbl">Engagements / Monat</span><span class="split-row-val">Ø ${fmt(Math.round(after.avgEng))}</span></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>`;
