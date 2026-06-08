@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-36 -->
+<!-- v20260603-37 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-36';
+  const MY_V = 'v20260603-37';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -413,6 +413,8 @@ body {
 .split-before { background:#FFF5F5; }
 .split-after  { background:#F0FBF7; }
 .split-div { width:40px; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:700; }
+.collab-body { display:grid; grid-template-rows:0fr; transition:grid-template-rows .3s ease; overflow:hidden; }
+.collab-body.open { grid-template-rows:1fr; }
 .split-lbl { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:10px; }
 .split-before .split-lbl { color:var(--danger); }
 .split-after  .split-lbl { color:var(--success); }
@@ -557,7 +559,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-36</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-37</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -2391,6 +2393,64 @@ function buildDashHTML(c, ins) {
     </div>
   </div>`;
 
+  // ── "Seit Zusammenarbeit" Zusammenfassungs-Banner
+  if (beforeAfter && c.splitLabel) {
+    const {before,after,imprGrowth,follGrowth,splitIdx} = beforeAfter;
+    const afterMonths = ins.n - splitIdx;
+    const totalAfterImpr = sum(c.monthly.impressions.slice(splitIdx));
+    const totalAfterFoll = sum(c.monthly.followers.slice(splitIdx));
+    const totalAfterEng  = sum(c.monthly.engagements.slice(splitIdx));
+    const imprSign = imprGrowth >= 0 ? '+' : '';
+    const follSign = follGrowth >= 0 ? '+' : '';
+    html += `
+  <div style="margin-bottom:1.25rem">
+    <button onclick="this.parentElement.querySelector('.collab-body').classList.toggle('open');this.querySelector('.collab-arrow').style.transform=this.parentElement.querySelector('.collab-body').classList.contains('open')?'rotate(180deg)':'rotate(0deg)'"
+      style="width:100%;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,${p}EE,${p});color:#fff;border:none;border-radius:12px;padding:14px 20px;cursor:pointer;font-family:'DM Sans',sans-serif;box-shadow:0 4px 16px ${p}44">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-size:20px">🤝</span>
+        <div style="text-align:left">
+          <div style="font-size:14px;font-weight:700">Seit Beginn unserer Zusammenarbeit</div>
+          <div style="font-size:11px;opacity:0.85">ab ${c.splitLabel} · ${afterMonths} Monate · aufklappen für Details</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px">
+        <div style="text-align:center"><div style="font-size:18px;font-weight:800">${imprSign}${imprGrowth}%</div><div style="font-size:9px;opacity:0.8;text-transform:uppercase;letter-spacing:.06em">Impressionen</div></div>
+        <div style="text-align:center"><div style="font-size:18px;font-weight:800">${follSign}${follGrowth}%</div><div style="font-size:9px;opacity:0.8;text-transform:uppercase;letter-spacing:.06em">Follower</div></div>
+        <span class="collab-arrow" style="font-size:18px;transition:transform .25s">▾</span>
+      </div>
+    </button>
+    <div class="collab-body" style="display:grid;grid-template-rows:0fr;transition:grid-template-rows .3s;overflow:hidden">
+      <div style="min-height:0">
+        <div style="background:#fff;border:1px solid ${p}33;border-top:none;border-radius:0 0 12px 12px;padding:20px 24px">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;font-weight:600;text-transform:uppercase;letter-spacing:.07em">Gesamtergebnis seit ${c.splitLabel}</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+            <div style="background:#F0FBF7;border-radius:10px;padding:14px 16px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:#00A86B">${fmtK(totalAfterImpr)}</div>
+              <div style="font-size:11px;color:#00624A;margin-top:2px">Impressionen gesamt</div>
+              <div style="font-size:11px;color:#00A86B;margin-top:4px;font-weight:600">${imprSign}${imprGrowth}% vs. vorher</div>
+            </div>
+            <div style="background:#EEF0FF;border-radius:10px;padding:14px 16px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:${p}">${fmt(totalAfterFoll)}</div>
+              <div style="font-size:11px;color:${p};margin-top:2px">Neue Follower gesamt</div>
+              <div style="font-size:11px;color:${p};margin-top:4px;font-weight:600">${follSign}${follGrowth}% vs. vorher</div>
+            </div>
+            <div style="background:#FFF8E1;border-radius:10px;padding:14px 16px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:#C89500">${fmtK(totalAfterEng)}</div>
+              <div style="font-size:11px;color:#856404;margin-top:2px">Engagements gesamt</div>
+              <div style="font-size:11px;color:#C89500;margin-top:4px;font-weight:600">Ø ${fmt(Math.round(totalAfterEng/afterMonths))} / Monat</div>
+            </div>
+          </div>
+          ${totalFollowersNow ? `<div style="background:#F4F5FF;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:13px;color:var(--muted)">Follower insgesamt (aktuell)</span>
+            <span style="font-size:20px;font-weight:800;color:${p}">${fmt(totalFollowersNow)}</span>
+          </div>` : ''}
+        </div>
+      </div>
+    </div>
+  </div>`;
+  }
+
+  // ── Vorher / Nachher Vergleich (Ø pro Monat)
   if (beforeAfter) {
     const {before,after,imprGrowth,follGrowth} = beforeAfter;
     html += `
