@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-53 -->
+<!-- v20260603-54 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-53';
+  const MY_V = 'v20260603-54';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -611,7 +611,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-53</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-54</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -808,18 +808,32 @@ function copyShareLink(clientId) {
     body: JSON.stringify(payload)
   })
   .then(res => {
-    if (!res.ok) throw new Error('JSONBlob Fehler ' + res.status);
-    // ID steckt im Location-Header: https://jsonblob.com/1234567890123456
-    const loc = res.headers.get('Location') || '';
-    const id = loc.split('/').pop();
-    if (!id) throw new Error('Keine ID erhalten');
+    if (!res.ok) throw new Error('JSONBlob Status ' + res.status);
+    // x-jsonblob-id Header enthält die UUID
+    const id = res.headers.get('x-jsonblob-id') || res.headers.get('Location')?.split('/').pop();
+    if (!id) throw new Error('Keine ID von JSONBlob erhalten');
     const url = 'https://celinealessa.github.io/linkedin-studio/#blob=' + id;
     return navigator.clipboard.writeText(url).then(() => url);
   })
-  .then(url => showToast('🔗 Kunden-Link kopiert! (' + url.slice(0,60) + '…)', 'ok'))
+  .then(url => {
+    showToast('🔗 Kunden-Link kopiert!', 'ok');
+    // Auch als Dialog anzeigen zum manuellen Kopieren
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+    d.innerHTML = `<div style="background:#fff;border-radius:16px;padding:28px 32px;max-width:480px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:'DM Sans',sans-serif">
+      <div style="font-size:18px;font-weight:700;margin-bottom:6px">🔗 Kunden-Link erstellt</div>
+      <div style="font-size:13px;color:#6E7A9F;margin-bottom:14px">Link wurde in die Zwischenablage kopiert. Hier nochmals zum manuellen Kopieren:</div>
+      <input id="_shareUrlBox" value="${url}" readonly style="width:100%;padding:10px 12px;border:1px solid #E2E6F0;border-radius:8px;font-size:12px;font-family:monospace;color:#1A1F36;box-sizing:border-box;background:#F8F9FF" onclick="this.select()">
+      <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+        <button onclick="document.getElementById('_shareUrlBox').select();document.execCommand('copy');this.textContent='✅ Kopiert!'" style="padding:8px 18px;background:#5B63FE;color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600">📋 Kopieren</button>
+        <button onclick="this.closest('div[style*=fixed]').remove()" style="padding:8px 18px;background:#F0F1FF;color:#5B63FE;border:none;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif">Schließen</button>
+      </div>
+    </div>`;
+    document.body.appendChild(d);
+  })
   .catch(err => {
     console.error('[Share]', err);
-    showToast('❌ Link konnte nicht erstellt werden: ' + err.message, 'warn');
+    showToast('❌ ' + err.message, 'warn');
   });
 }
 
