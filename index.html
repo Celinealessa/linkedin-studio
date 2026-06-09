@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-49 -->
+<!-- v20260603-50 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-49';
+  const MY_V = 'v20260603-50';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -609,7 +609,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-49</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-50</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -1246,7 +1246,7 @@ function renderEdit(container) {
           <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem;margin-bottom:14px">
             <div style="font-size:13px;font-weight:600;margin-bottom:4px">⚖️ Vorher / Nachher Vergleich <span style="font-size:11px;color:var(--muted);font-weight:400">— optional</span></div>
             <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Ab welchem Monat habt ihr zusammengearbeitet?</div>
-            <select class="form-input" id="splitSel" style="max-width:280px">
+            <select class="form-input" id="splitSel" style="max-width:280px" onchange="autoSaveSplitLabel()">
               <option value="">— kein Vergleich —</option>
               ${c.monthly ? c.monthly.labels.map(l=>`<option value="${l}" ${l===c.splitLabel?'selected':''}>${l}</option>`).join('') : ''}
             </select>
@@ -1369,6 +1369,7 @@ function liveEditCI() {
   const accent  = document.getElementById('ci_accent')?.value || '#fff';
   const client  = document.getElementById('ci_client')?.value || 'Kunde';
   const logo    = document.getElementById('ci_logo')?.value || client.charAt(0);
+  // Vorschau aktualisieren
   const bar = document.getElementById('ciBar');
   if (bar) {
     bar.style.background = primary;
@@ -1378,11 +1379,25 @@ function liveEditCI() {
     document.getElementById('ciBarLogo').textContent = logo;
     document.getElementById('ciBarName').textContent = client + ' · LinkedIn Analytics';
   }
-  document.getElementById('editClientName').textContent = client;
   const lp = document.getElementById('editLogoPreview');
-  lp.style.background = primary;
-  lp.style.color = contrastColor(primary);
-  lp.innerHTML = logo;
+  if (lp) { lp.style.background = primary; lp.style.color = contrastColor(primary); lp.innerHTML = logo; }
+  const en = document.getElementById('editClientName');
+  if (en) en.textContent = client;
+  // Sofort ins Client-Objekt speichern (kein "Weiter" nötig)
+  const c = getClient(ROUTE.clientId);
+  if (!c) return;
+  c.ci.client  = client;
+  c.ci.person  = document.getElementById('ci_person')?.value.trim() || c.ci.person || '';
+  c.ci.period  = document.getElementById('ci_period')?.value.trim() || c.ci.period || '';
+  c.ci.agency  = document.getElementById('ci_agency')?.value.trim() || c.ci.agency || '';
+  c.ci.primary = primary;
+  c.ci.accent  = accent;
+  c.ci.color2  = document.getElementById('ci_color2')?.value || primary;
+  c.ci.color3  = document.getElementById('ci_color3')?.value || primary;
+  c.ci.logo    = logo;
+  c.updatedAt  = Date.now();
+  saveApp();
+  renderSidebar();
 }
 
 let _tmpLogoImg = '';
@@ -2497,6 +2512,13 @@ function readPosts() {
     if (!cap) return null;
     return { caption:cap, label:inp[1]?.value.trim(), impr:toN(inp[2]?.value), likes:toN(inp[3]?.value), comments:toN(inp[4]?.value), shares:toN(inp[5]?.value), eng:toN(inp[6]?.value), url:inp[7]?.value.trim(), type:_readType(tr) };
   }).filter(Boolean).sort((a,b)=>b.impr-a.impr);
+}
+function autoSaveSplitLabel() {
+  const c = getClient(ROUTE.clientId);
+  if (!c) return;
+  c.splitLabel = document.getElementById('splitSel')?.value || '';
+  c.updatedAt = Date.now();
+  saveApp();
 }
 function autoSavePosts() {
   const c = getClient(ROUTE.clientId);
