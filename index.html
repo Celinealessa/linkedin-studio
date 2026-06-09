@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-64 -->
+<!-- v20260603-65 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-64';
+  const MY_V = 'v20260603-65';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -612,7 +612,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-64</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-65</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -684,14 +684,26 @@ function loadApp() {
   return { clients: [] };
 }
 
+let _saving = false;
 function saveApp() {
-  // Immer in localStorage speichern
+  // localStorage
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(APP)); } catch(e) {}
   // Eingebetteten Daten-Tag aktualisieren (für Desktop-Datei-Export)
   try {
     const tag = document.getElementById('__appdata');
     if (tag) tag.textContent = JSON.stringify(APP);
   } catch(e) {}
+  // Sidebar + Home-Karten aktuell halten (kein Loop)
+  if (!_saving) {
+    _saving = true;
+    try {
+      if (typeof renderSidebar === 'function') renderSidebar();
+      // Home-Karten aktualisieren falls gerade sichtbar
+      const vc = document.getElementById('viewContainer');
+      if (vc && typeof ROUTE !== 'undefined' && ROUTE.view === 'home' && typeof renderHome === 'function') renderHome(vc);
+    } catch(e) {}
+    _saving = false;
+  }
 }
 
 const APP = loadApp();
@@ -739,7 +751,9 @@ const APP = loadApp();
   };
   if (idx >= 0) APP.clients[idx] = fresh;
   else APP.clients.unshift(fresh);
+  // saveApp() ist hier noch nicht verfügbar — direkt speichern
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(APP)); } catch(e) {}
+  try { const t=document.getElementById('__appdata'); if(t) t.textContent=JSON.stringify(APP); } catch(e) {}
 })();
 
 // ── Auto-fix: repair clients where monthly was saved with 0 labels (broken parse from old code)
