@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-46 -->
+<!-- v20260603-47 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-46';
+  const MY_V = 'v20260603-47';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -608,7 +608,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-46</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-47</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -2328,31 +2328,54 @@ function ciPalette(primary, ci) {
   return [primary, c2, c3, blendWithWhite(primary, 0.30)];
 }
 
-function _typeSelectHtml(type, onchangeFn) {
+// Sammle alle custom Labels aus den Posts eines Clients
+function getProjectCustomTypes(c) {
+  if (!c) return [];
+  const known = new Set(Object.keys(TYPE_META));
+  const custom = new Map(); // label → true (dedupliziert)
+  [...(c.posts||[]), ...(c.flopPosts||[])].forEach(p => {
+    if (p.type && !known.has(p.type)) custom.set(p.type, true);
+  });
+  return [...custom.keys()];
+}
+
+function _typeSelectHtml(type, extraCustomTypes) {
   const isKnown = !!TYPE_META[type];
   const cval = isKnown ? '' : type;
   const selVal = isKnown ? type : '_custom_';
-  const opts = Object.entries(TYPE_META)
-    // deduplicate by label
-    .filter(([v],_,arr) => !['brand','network','thought','industry'].includes(v))
-    .map(([v,m])=>`<option value="${v}" ${v===selVal?'selected':''}>${m.label}</option>`).join('')
-    + `<option value="_custom_" ${selVal==='_custom_'?'selected':''}>＋ Eigenes Label…</option>`;
+  const baseOpts = Object.entries(TYPE_META)
+    .filter(([v]) => !['brand','network','thought','industry'].includes(v))
+    .map(([v,m]) => `<option value="${v}" ${v===selVal?'selected':''}>${m.label}</option>`).join('');
+  // Bereits gespeicherte Custom-Labels als eigene Optionen
+  const savedCustomOpts = (extraCustomTypes||[])
+    .filter(t => t !== type) // aktueller type wird unten separat behandelt
+    .map(t => `<option value="_custom_${encodeURIComponent(t)}">${t}</option>`).join('');
+  // Aktueller custom type als eigene Option
+  const currentCustomOpt = (!isKnown && type) ? `<option value="_custom_${encodeURIComponent(type)}" selected>${type}</option>` : '';
+  const opts = baseOpts + (savedCustomOpts||currentCustomOpt ? `<optgroup label="── Eigene Labels ──">${currentCustomOpt}${savedCustomOpts}</optgroup>` : '')
+    + `<option value="_custom_">＋ Neues Label…</option>`;
   return { opts, isKnown, cval };
 }
 
 let _pRowId = 0;
-function toggleCustomType(rid, bodyId) {
+function toggleCustomType(rid) {
   const sel = document.getElementById('typesel_'+rid);
   const inp = document.getElementById('customtype_'+rid);
   if (!sel||!inp) return;
+  // _custom_ = neues Label eingeben; _custom_XXX = gespeichertes Label (kein Input nötig)
   inp.style.display = sel.value === '_custom_' ? 'block' : 'none';
 }
-function addPostRow(cap='', lbl='', impr='', likes='', comm='', shares='', eng='', url='', type='story') {
+function _currentProjectCustomTypes() {
+  const c = getClient(ROUTE.clientId);
+  return getProjectCustomTypes(c);
+}
+function addPostRow(cap='', lbl='', impr='', likes='', comm='', shares='', eng='', url='', type='story', extraCustomTypes) {
   _pRowId++;
   const rid = _pRowId;
   const tbody = document.getElementById('postsBody');
   const tr = document.createElement('tr');
-  const {opts, isKnown, cval} = _typeSelectHtml(type);
+  const customs = extraCustomTypes !== undefined ? extraCustomTypes : _currentProjectCustomTypes();
+  const {opts, isKnown, cval} = _typeSelectHtml(type, customs);
   tr.innerHTML = `
     <td class="t-left"><input value="${esc(cap)}" placeholder="Caption…" style="width:200px;text-align:left;font-family:'DM Sans',sans-serif"></td>
     <td class="t-left"><input value="${esc(lbl)}" placeholder="Titel · Monat Jahr" style="width:130px;text-align:left;font-family:'DM Sans',sans-serif"></td>
@@ -2371,15 +2394,17 @@ function restorePostsRows(posts) {
   const tbody = document.getElementById('postsBody');
   if (!tbody) return;
   tbody.innerHTML = ''; _pRowId = 0;
-  posts.forEach(p => addPostRow(p.caption, p.label, p.impr, p.likes||0, p.comments||0, p.shares||0, p.eng||0, p.url||'', p.type));
+  const customs = _currentProjectCustomTypes();
+  posts.forEach(p => addPostRow(p.caption, p.label, p.impr, p.likes||0, p.comments||0, p.shares||0, p.eng||0, p.url||'', p.type, customs));
 }
-function addFlopPostRow(cap='', lbl='', impr='', likes='', comm='', shares='', eng='', url='', type='story') {
+function addFlopPostRow(cap='', lbl='', impr='', likes='', comm='', shares='', eng='', url='', type='story', extraCustomTypes) {
   _pRowId++;
   const rid = _pRowId;
   const tbody = document.getElementById('flopPostsBody');
   if (!tbody) return;
   const tr = document.createElement('tr');
-  const {opts, isKnown, cval} = _typeSelectHtml(type);
+  const customs = extraCustomTypes !== undefined ? extraCustomTypes : _currentProjectCustomTypes();
+  const {opts, isKnown, cval} = _typeSelectHtml(type, customs);
   tr.innerHTML = `
     <td class="t-left"><input value="${esc(cap)}" placeholder="Caption…" style="width:200px;text-align:left;font-family:'DM Sans',sans-serif"></td>
     <td class="t-left"><input value="${esc(lbl)}" placeholder="Titel · Monat Jahr" style="width:130px;text-align:left;font-family:'DM Sans',sans-serif"></td>
@@ -2398,14 +2423,20 @@ function restoreFlopPostsRows(posts) {
   const tbody = document.getElementById('flopPostsBody');
   if (!tbody) return;
   tbody.innerHTML = '';
-  (posts||[]).forEach(p => addFlopPostRow(p.caption, p.label, p.impr, p.likes||0, p.comments||0, p.shares||0, p.eng||0, p.url||'', p.type));
+  const customs = _currentProjectCustomTypes();
+  (posts||[]).forEach(p => addFlopPostRow(p.caption, p.label, p.impr, p.likes||0, p.comments||0, p.shares||0, p.eng||0, p.url||'', p.type, customs));
 }
 function _readType(tr) {
   const sel = tr.querySelector('select');
   if (!sel) return 'story';
   if (sel.value === '_custom_') {
+    // neues Label aus Texteingabe
     const ci = tr.querySelector('.custom-type-input');
     return ci?.value.trim() || 'story';
+  }
+  if (sel.value.startsWith('_custom_')) {
+    // gespeichertes Label (encoded): _custom_CEO%20Story → CEO Story
+    return decodeURIComponent(sel.value.slice(8)) || 'story';
   }
   return sel.value || 'story';
 }
@@ -2716,7 +2747,7 @@ function buildDashHTML(c, ins) {
       </div>
       <div class="posts-list">`;
       c.posts.forEach((post,i) => {
-        const tm = TYPE_META[post.type]||TYPE_META.story;
+        const tm = TYPE_META[post.type]||{label:post.type||'Story',bg:'#F1EFEA',col:'#4A4A4A',bar:'#6B7A99'};
         const rc = i===0?'g':i===1?'s':i===2?'b':'';
         const metaParts = [];
         if (post.label) metaParts.push(post.label);
@@ -2741,7 +2772,7 @@ function buildDashHTML(c, ins) {
     if (c.flopPosts?.length) {
       flopPostsHTML += `<div class="posts-list">`;
       c.flopPosts.forEach((post,i) => {
-        const tm = TYPE_META[post.type]||TYPE_META.story;
+        const tm = TYPE_META[post.type]||{label:post.type||'Story',bg:'#F1EFEA',col:'#4A4A4A',bar:'#6B7A99'};
         const metaParts = [];
         if (post.label) metaParts.push(post.label);
         if (post.likes) metaParts.push('👍 '+post.likes.toLocaleString('de-DE'));
