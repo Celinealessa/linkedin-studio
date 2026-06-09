@@ -1803,8 +1803,8 @@ function smartImport_collect(data, type, filename) {
       const wb = XLSX.read(data, { type:'array', cellDates:false, raw:false });
       console.log('[Upload] Sheets:', wb.SheetNames.join(', '));
       // ── LinkedIn AggregateAnalytics format detection (ENGAGEMENT, TOP POSTS, FOLLOWERS sheets)
-      const liSheets = ['ENGAGEMENT','TOP POSTS','FOLLOWERS','DISCOVERY','TOP-BEITRÄGE','FOLLOWER_INNEN','AUFFINDBARKEIT','DEMOGRAFISCHE DATEN'];
-      if (wb.SheetNames.some(n => liSheets.includes(n))) {
+      const liSheets = ['engagement','top posts','followers','discovery','top-beiträge','topbeiträge','follower_innen','followerinnen','follower innen','auffindbarkeit','demografische daten'];
+      if (wb.SheetNames.some(n => liSheets.includes(n.toLowerCase()))) {
         console.log('[Upload] LinkedIn AggregateAnalytics format detected');
         const result = parseLinkedInAggregateAnalytics(wb);
         console.log('[Upload] Parse result:', result ? result.d.labels.length + ' months' : 'null');
@@ -1853,11 +1853,16 @@ function extractCaptionFromUrl(url) {
 
 // ── LinkedIn AggregateAnalytics Excel parser (EN + DE sheet names)
 function parseLinkedInAggregateAnalytics(wb) {
-  // Support English and German LinkedIn export sheet names
-  const ws = n => wb.Sheets[n];
+  // Case-insensitiver Sheet-Lookup (LinkedIn ändert manchmal Groß/Kleinschreibung)
+  const ws = name => {
+    if (wb.Sheets[name]) return wb.Sheets[name];
+    const lower = name.toLowerCase().replace(/[\s_:]/g,'');
+    const match = wb.SheetNames.find(n => n.toLowerCase().replace(/[\s_:]/g,'') === lower);
+    return match ? wb.Sheets[match] : null;
+  };
   const engWs  = ws('ENGAGEMENT');
-  const topWs  = ws('TOP POSTS') || ws('TOP-BEITRÄGE') || ws('TOP BEITRÄGE');
-  const follWs = ws('FOLLOWERS') || ws('FOLLOWER_INNEN') || ws('FOLLOWER:INNEN');
+  const topWs  = ws('TOP POSTS') || ws('TOP-BEITRÄGE') || ws('TOP BEITRÄGE') || ws('TOPBEITRÄGE');
+  const follWs = ws('FOLLOWERS') || ws('FOLLOWER_INNEN') || ws('FOLLOWER:INNEN') || ws('FOLLOWER INNEN') || ws('FOLLOWERINNEN');
   if (!engWs) return null;
 
   const engRows = XLSX.utils.sheet_to_json(engWs, {header:1, defval:'', raw:false});
