@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-47 -->
+<!-- v20260603-48 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-47';
+  const MY_V = 'v20260603-48';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -608,7 +608,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-47</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-48</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -3201,7 +3201,21 @@ function editRec(i) {
   document.getElementById('rec_title').value = r.title === '—' ? '' : (r.title||'');
   document.getElementById('rec_body').value  = r.body||'';
   document.getElementById('rec_rec').value   = r.rec||'';
-  setRecColor(r.color||'#5B63FE');
+
+  // CI-Farben des Kunden + feste Basisfarben in die Swatches injizieren
+  const ci = c.ci || {};
+  const ciColors = [ci.primary, ci.accent, ci.color2, ci.color3].filter(Boolean);
+  const fixedColors = ['#00A86B','#E03B3B','#F59E0B','#5B63FE','#7B68EE','#FF6600'];
+  const allColors = [...new Set([...ciColors, ...fixedColors])];
+  const swatchContainer = document.getElementById('recColorSwatches');
+  if (swatchContainer) {
+    swatchContainer.innerHTML = allColors.map(col => {
+      const isCi = ciColors.includes(col);
+      return `<button onclick="setRecColor('${col}')" style="width:28px;height:28px;border-radius:50%;background:${col};border:3px solid transparent;cursor:pointer;${isCi?'box-shadow:0 0 0 2px #fff,0 0 0 4px '+col+'88;':''}" title="${col}"></button>`;
+    }).join('') + `<input type="color" id="rec_color_pick" value="#5B63FE" oninput="setRecColor(this.value)" style="width:28px;height:28px;border-radius:50%;border:none;cursor:pointer;padding:0" title="Eigene Farbe">`;
+  }
+
+  setRecColor(r.color||ci.primary||'#5B63FE');
   openModal('recModal');
 }
 function saveRec() {
@@ -3265,14 +3279,9 @@ if (!checkShareParam()) { renderApp(); }
       <div class="form-group" style="margin:0"><label class="form-label">📝 Beschreibung</label><textarea class="form-input" id="rec_body" rows="5" style="resize:vertical;line-height:1.6" placeholder="Erkläre die Analyse und den Hintergrund dieser Empfehlung…"></textarea></div>
       <div class="form-group" style="margin:0"><label class="form-label">→ Konkrete Maßnahme</label><input class="form-input" id="rec_rec" placeholder="Was soll der Creator konkret tun?"></div>
       <div class="form-group" style="margin:0">
-        <label class="form-label">🎨 Akzentfarbe</label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button onclick="setRecColor('#5B63FE')" style="width:28px;height:28px;border-radius:50%;background:#5B63FE;border:3px solid transparent;cursor:pointer" title="Blau"></button>
-          <button onclick="setRecColor('#00A86B')" style="width:28px;height:28px;border-radius:50%;background:#00A86B;border:3px solid transparent;cursor:pointer" title="Grün"></button>
-          <button onclick="setRecColor('#F59E0B')" style="width:28px;height:28px;border-radius:50%;background:#F59E0B;border:3px solid transparent;cursor:pointer" title="Gelb"></button>
-          <button onclick="setRecColor('#E03B3B')" style="width:28px;height:28px;border-radius:50%;background:#E03B3B;border:3px solid transparent;cursor:pointer" title="Rot"></button>
-          <button onclick="setRecColor('#7B68EE')" style="width:28px;height:28px;border-radius:50%;background:#7B68EE;border:3px solid transparent;cursor:pointer" title="Lila"></button>
-          <button onclick="setRecColor('#FF6600')" style="width:28px;height:28px;border-radius:50%;background:#FF6600;border:3px solid transparent;cursor:pointer" title="Orange"></button>
+        <label class="form-label">🎨 Akzentfarbe <span style="font-size:11px;color:var(--muted)">(CI-Farben oben, weitere unten)</span></label>
+        <div id="recColorSwatches" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <!-- wird dynamisch in editRec() befüllt -->
           <input type="color" id="rec_color_pick" value="#5B63FE" oninput="setRecColor(this.value)" style="width:28px;height:28px;border-radius:50%;border:none;cursor:pointer;padding:0" title="Eigene Farbe">
         </div>
         <input type="hidden" id="rec_color" value="#5B63FE">
