@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-52 -->
+<!-- v20260603-53 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-52';
+  const MY_V = 'v20260603-53';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -611,7 +611,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-52</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-53</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -777,96 +777,105 @@ function shareDecode(str) {
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
-// ── Generate share link for a client
+// ── Payload für Share aufbauen
+function buildSharePayload(c) {
+  const m = c.monthly || {};
+  return {
+    ci: { primary:c.ci.primary, accent:c.ci.accent, color2:c.ci.color2||'',
+          color3:c.ci.color3||'', client:c.ci.client, person:c.ci.person||'',
+          period:c.ci.period||'', agency:c.ci.agency||'', logo:c.ci.logo||'' },
+    monthly: m.labels ? { labels:m.labels, impressions:m.impressions,
+      followers:m.followers, engagements:m.engagements,
+      postsPerMonth:m.postsPerMonth, totalFollowers:m.totalFollowers||0 } : null,
+    posts: (c.posts||[]).map(p=>({caption:(p.caption||'').slice(0,120),label:p.label,impr:p.impr||0,eng:p.eng||0,likes:p.likes||0,comments:p.comments||0,shares:p.shares||0,url:p.url||'',type:p.type||'story'})),
+    flopPosts: (c.flopPosts||[]).map(p=>({caption:(p.caption||'').slice(0,120),label:p.label,impr:p.impr||0,eng:p.eng||0,likes:p.likes||0,comments:p.comments||0,shares:p.shares||0,url:p.url||'',type:p.type||'story'})),
+    splitLabel: c.splitLabel||'',
+    recommendations: c.recommendations||null,
+    contentMix: c.contentMix||null,
+    customNote: c.customNote||''
+  };
+}
+
+// ── Kunden-Link erstellen: Daten → JSONBlob → kurze ID
 function copyShareLink(clientId) {
   const c = getClient(clientId);
   if (!c) return;
-  // Payload maximal schlank: Captions 80 Z., keine Post-URLs, Empfehlungen kürzen
-  const trimPosts = (arr) => (arr||[]).map(p => ({
-    c: (p.caption||'').slice(0,80), lb: p.label,
-    i: p.impr||0, e: p.eng||0, lk: p.likes||0,
-    cm: p.comments||0, s: p.shares||0, t: p.type||'story'
-  }));
-  const trimRecs = (recs) => (recs||[]).map(r => ({
-    badge:r.badge||'', val:r.val||'', title:r.title||'',
-    body:(r.body||'').slice(0,250), rec:(r.rec||'').slice(0,100),
-    color:r.color||'', badgeBg:r.badgeBg||'', badgeCol:r.badgeCol||''
-  }));
-  // monthly: nur nötige Arrays, _sortKeys weglassen
-  const m = c.monthly || {};
-  const trimMonthly = m.labels ? {
-    labels:m.labels, impressions:m.impressions, followers:m.followers,
-    engagements:m.engagements, postsPerMonth:m.postsPerMonth,
-    totalFollowers:m.totalFollowers||0
-  } : null;
-  const payload = {
-    ci: {primary:c.ci.primary,accent:c.ci.accent,color2:c.ci.color2,color3:c.ci.color3,
-         client:c.ci.client,person:c.ci.person,period:c.ci.period,agency:c.ci.agency,logo:c.ci.logo},
-    monthly: trimMonthly,
-    posts: trimPosts(c.posts), fp: trimPosts(c.flopPosts),
-    sl: c.splitLabel||'',
-    r: trimRecs(c.recommendations),
-    mx: c.contentMix||null,
-    n: c.customNote||''
-  };
-  try {
-    const encoded = shareEncode(payload);
-    const longUrl = 'https://celinealessa.github.io/linkedin-studio/#share=' + encoded;
-    showToast('🔗 Link wird gekürzt…', 'ok');
-    // shrtco.de — CORS-fähig, kostenlos
-    fetch('https://api.shrtco.de/v2/shorten?url=' + encodeURIComponent(longUrl))
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        const short = data?.result?.full_short_link || data?.result?.short_link;
-        const finalUrl = short || longUrl;
-        return navigator.clipboard.writeText(finalUrl).then(() => finalUrl);
-      })
-      .then(finalUrl => showToast('🔗 Kunden-Link kopiert: ' + finalUrl, 'ok'))
-      .catch(() => {
-        navigator.clipboard.writeText(longUrl)
-          .then(() => showToast('🔗 Link kopiert!', 'ok'))
-          .catch(() => { const ta=document.createElement('textarea');ta.value=longUrl;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();showToast('🔗 Link kopiert!','ok'); });
-      });
-  } catch(e) { showToast('Fehler: '+e.message,'warn'); }
+  const payload = buildSharePayload(c);
+  showToast('🔗 Link wird erstellt…', 'ok');
+  fetch('https://jsonblob.com/api/jsonBlob', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(res => {
+    if (!res.ok) throw new Error('JSONBlob Fehler ' + res.status);
+    // ID steckt im Location-Header: https://jsonblob.com/1234567890123456
+    const loc = res.headers.get('Location') || '';
+    const id = loc.split('/').pop();
+    if (!id) throw new Error('Keine ID erhalten');
+    const url = 'https://celinealessa.github.io/linkedin-studio/#blob=' + id;
+    return navigator.clipboard.writeText(url).then(() => url);
+  })
+  .then(url => showToast('🔗 Kunden-Link kopiert! (' + url.slice(0,60) + '…)', 'ok'))
+  .catch(err => {
+    console.error('[Share]', err);
+    showToast('❌ Link konnte nicht erstellt werden: ' + err.message, 'warn');
+  });
 }
 
-// ── On load: check if URL contains a share hash → render isolated read-only view
+// ── On load: Hash auswerten (#blob=ID oder legacy #share=…)
 function checkShareParam() {
   const hash = location.hash;
-  if (!hash.startsWith('#share=')) return false;
-  const encoded = hash.slice(7);
-  if (!encoded) return false;
-  try {
-    const raw = shareDecode(encoded);
-    if (!raw.ci || !raw.monthly) throw new Error('Ungültige Daten im Link');
-    // Kompakte Feldnamen zurück in Vollformat expandieren
-    const expandPosts = (arr) => (arr||[]).map(p => ({
-      caption: p.c||p.caption||'', label: p.lb||p.label||'',
-      impr: p.i??p.impr??0, eng: p.e??p.eng??0,
-      likes: p.lk??p.likes??0, comments: p.cm??p.comments??0,
-      shares: p.s??p.shares??0, type: p.t||p.type||'story', url: p.url||''
-    }));
-    const c = {
-      ci: raw.ci, monthly: raw.monthly,
-      posts: expandPosts(raw.posts),
-      flopPosts: expandPosts(raw.fp||raw.flopPosts),
-      splitLabel: raw.sl??raw.splitLabel??'',
-      recommendations: raw.r||raw.recommendations||null,
-      contentMix: raw.mx??raw.contentMix??null,
-      customNote: raw.n??raw.customNote??''
-    };
-    renderReadOnlyDashboard(c);
-    return true; // stop normal app from rendering
-  } catch(e) {
-    console.error('[Share]', e);
-    document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'DM Sans',sans-serif;flex-direction:column;gap:14px;color:#555">
-      <div style="font-size:52px">⚠️</div>
-      <div style="font-size:18px;font-weight:700">Link ungültig</div>
-      <div style="font-size:13px;background:#fff;padding:10px 18px;border-radius:8px;color:#444">${e.message}</div>
-      <a href="https://celinealessa.github.io/linkedin-studio/" style="color:#5B63FE;font-size:13px;margin-top:4px">→ Zur App</a>
-    </div>`;
+
+  // Neues Format: #blob=ID → von JSONBlob laden
+  if (hash.startsWith('#blob=')) {
+    const id = hash.slice(6);
+    if (!id) return false;
+    document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'DM Sans',sans-serif;flex-direction:column;gap:12px;color:#555"><div style="font-size:36px">⏳</div><div style="font-size:15px">Dashboard wird geladen…</div></div>`;
+    fetch('https://jsonblob.com/api/jsonBlob/' + id, { headers:{ 'Accept':'application/json' } })
+      .then(res => { if(!res.ok) throw new Error('Blob nicht gefunden (ID: '+id+')'); return res.json(); })
+      .then(raw => {
+        if (!raw.ci || !raw.monthly) throw new Error('Ungültige Daten');
+        renderReadOnlyDashboard(raw);
+      })
+      .catch(e => {
+        document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'DM Sans',sans-serif;flex-direction:column;gap:14px;color:#555">
+          <div style="font-size:52px">⚠️</div>
+          <div style="font-size:18px;font-weight:700">Dashboard nicht verfügbar</div>
+          <div style="font-size:13px;background:#fff;padding:10px 18px;border-radius:8px;color:#444">${e.message}</div>
+          <a href="https://celinealessa.github.io/linkedin-studio/" style="color:#5B63FE;font-size:13px">→ Zur App</a>
+        </div>`;
+      });
     return true;
   }
+
+  // Legacy-Format: #share=BASE64 (für alte Links)
+  if (hash.startsWith('#share=')) {
+    const encoded = hash.slice(7);
+    if (!encoded) return false;
+    try {
+      const raw = shareDecode(encoded);
+      if (!raw.ci || !raw.monthly) throw new Error('Ungültige Daten im Link');
+      const c = {
+        ci: raw.ci, monthly: raw.monthly,
+        posts: raw.posts||[], flopPosts: raw.fp||raw.flopPosts||[],
+        splitLabel: raw.sl||raw.splitLabel||'',
+        recommendations: raw.r||raw.recommendations||null,
+        contentMix: raw.mx||raw.contentMix||null,
+        customNote: raw.n||raw.customNote||''
+      };
+      renderReadOnlyDashboard(c);
+      return true;
+    } catch(e) {
+      document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'DM Sans',sans-serif;flex-direction:column;gap:14px;color:#555">
+        <div style="font-size:52px">⚠️</div><div style="font-size:18px;font-weight:700">Link ungültig</div>
+        <div style="font-size:13px;background:#fff;padding:10px 18px;border-radius:8px;color:#444">${e.message}</div>
+        <a href="https://celinealessa.github.io/linkedin-studio/" style="color:#5B63FE;font-size:13px">→ Zur App</a>
+      </div>`;
+      return true;
+    }
+  }
+  return false;
 }
 
 // ── Isolated read-only dashboard — no sidebar, no other clients, no PAYBACK
