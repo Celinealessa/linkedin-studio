@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-59 -->
+<!-- v20260603-60 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-59';
+  const MY_V = 'v20260603-60';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -611,7 +611,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-59</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-60</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -1290,7 +1290,7 @@ function renderEdit(container) {
                 <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Impressionen</th>
                 <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Follower</th>
                 <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Engagements</th>
-                <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Posts</th>
+                <th style="padding:8px 14px;text-align:right;font-size:11px;font-weight:600;color:var(--muted)">Posts ✏️</th>
               </tr></thead>
               <tbody id="previewBody">
                 ${c.monthly.labels.map((l,i)=>`<tr style="border-bottom:1px solid var(--border)">
@@ -1298,7 +1298,11 @@ function renderEdit(container) {
                   <td style="padding:7px 14px;text-align:right">${(c.monthly.impressions[i]||0).toLocaleString('de-DE')}</td>
                   <td style="padding:7px 14px;text-align:right">${(c.monthly.followers[i]||0).toLocaleString('de-DE')}</td>
                   <td style="padding:7px 14px;text-align:right">${(c.monthly.engagements[i]||0).toLocaleString('de-DE')}</td>
-                  <td style="padding:7px 14px;text-align:right">${c.monthly.postsPerMonth[i]||0}</td>
+                  <td style="padding:4px 8px;text-align:right">
+                    <input type="number" min="0" value="${c.monthly.postsPerMonth[i]||0}"
+                      onchange="updatePostsPerMonth(${i},this.value)"
+                      style="width:54px;text-align:right;border:1px solid #C7CAFF;border-radius:6px;padding:3px 6px;font-size:13px;font-family:'DM Sans',sans-serif;background:#F8F9FF">
+                  </td>
                 </tr>`).join('')}
               </tbody>
             </table>
@@ -1548,6 +1552,13 @@ function readManualData() {
     d.postsPerMonth.push(toN(inp[4]?.value));
   });
   return d;
+}
+function updatePostsPerMonth(idx, val) {
+  const c = getClient(ROUTE.clientId);
+  if (!c || !c.monthly) return;
+  c.monthly.postsPerMonth[idx] = parseInt(val) || 0;
+  saveApp();
+  showToast('Gespeichert', 'ok');
 }
 function updateManualSplitSel() {
   const labels = [];
