@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-41 -->
+<!-- v20260603-42 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-41';
+  const MY_V = 'v20260603-42';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -505,9 +505,58 @@ body {
    PRINT
 ══════════════════════════════════════════ */
 @media print {
-  .sidebar, .topbar, .dash-topbar, .toast, .overlay { display:none !important; }
-  .main { margin-left:0 !important; }
-  .dash-header { position:relative !important; top:0 !important; }
+  /* ── Hide everything except the dashboard content */
+  .sidebar, .topbar, .toast, .overlay,
+  .edit-section, #stepCI, #stepData, #stepPosts,
+  button, .breadcrumb, .topbar-actions,
+  #roTopbar > div:last-child,
+  .dash-header .btn, .btn { display:none !important; }
+
+  /* ── Reset layout */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  body, html { background: #fff !important; }
+  .main { margin-left: 0 !important; padding: 0 !important; }
+  .app-shell { display: block !important; }
+  #viewContainer, #sharedDashContent { max-width: 100% !important; padding: 0 16px !important; }
+
+  /* ── Topbar stays but static */
+  .topbar { display:none !important; }
+  #roTopbar { display:flex !important; position:relative !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; margin-bottom:16px; }
+
+  /* ── Dashboard header */
+  .dash-header { position: relative !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin-bottom: 16px; }
+  .dh-actions { display: none !important; }
+
+  /* ── Cards & charts: preserve colors */
+  .kpi-card, .chart-card, .split, .insight-card, .post-row,
+  .hero, .hero-inner, .kpi-grid { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* ── Page breaks */
+  .kpi-grid        { page-break-inside: avoid; }
+  .chart-card      { page-break-inside: avoid; margin-bottom: 12px !important; }
+  .split           { page-break-inside: avoid; }
+  .insight-card    { page-break-inside: avoid; }
+  .section-hd      { page-break-after: avoid; }
+  .posts-list      { page-break-inside: avoid; }
+
+  /* ── Collab banner stays closed on print */
+  .collab-body     { display: none !important; }
+  .split-body      { display: none !important; }
+
+  /* ── Charts: fixed height so they don't overflow */
+  canvas { max-height: 200px !important; }
+
+  /* ── Recommendations grid */
+  .insight-grid { grid-template-columns: repeat(2,1fr) !important; }
+
+  /* ── Hide non-essential elements */
+  .legend { display: none !important; }
+  .po-rank { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  @page {
+    size: A4 portrait;
+    margin: 14mm 12mm 14mm 12mm;
+  }
 }
 
 /* ══════════════════════════════════════════
@@ -559,7 +608,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-41</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-42</span></div>
   </nav>
 
   <!-- MAIN -->
