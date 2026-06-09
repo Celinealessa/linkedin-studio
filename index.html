@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-44 -->
+<!-- v20260603-45 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-44';
+  const MY_V = 'v20260603-45';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -608,7 +608,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-44</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-45</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -984,7 +984,7 @@ function renderHome(container) {
   }
 
   const cards = APP.clients.map(c => {
-    const ins = c.monthly ? analyze(c.monthly, c.splitLabel, c.ci.primary, c.posts, c.flopPosts) : null;
+    const ins = c.monthly ? analyze(c.monthly, c.splitLabel, c.ci.primary, c.posts, c.flopPosts, c.ci) : null;
     const status = !c.monthly ? 'empty' : 'ready';
     const statusLabel = { empty:'Keine Daten', draft:'Entwurf', ready:'Dashboard bereit' }[status];
     const statusClass = { empty:'status-empty', draft:'status-draft', ready:'status-ready' }[status];
@@ -1097,8 +1097,18 @@ function renderEdit(container) {
             <input class="form-input" type="color" id="ci_primary" value="${ci.primary}" oninput="liveEditCI()">
           </div>
           <div class="form-group">
-            <label class="form-label">Akzentfarbe</label>
+            <label class="form-label">Akzentfarbe (Logo-Hintergrund)</label>
             <input class="form-input" type="color" id="ci_accent" value="${ci.accent}" oninput="liveEditCI()">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Diagrammfarbe 2 <span style="font-size:11px;color:var(--muted)">(optional, für Charts &amp; Mix)</span></label>
+            <input class="form-input" type="color" id="ci_color2" value="${ci.color2||ci.primary}" oninput="liveEditCI()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Diagrammfarbe 3 <span style="font-size:11px;color:var(--muted)">(optional)</span></label>
+            <input class="form-input" type="color" id="ci_color3" value="${ci.color3||ci.primary}" oninput="liveEditCI()">
           </div>
         </div>
         <div class="form-row">
@@ -1362,6 +1372,8 @@ function saveCIAndNext() {
   c.ci.agency  = document.getElementById('ci_agency').value.trim();
   c.ci.primary = document.getElementById('ci_primary').value;
   c.ci.accent  = document.getElementById('ci_accent').value;
+  c.ci.color2  = document.getElementById('ci_color2')?.value || c.ci.primary;
+  c.ci.color3  = document.getElementById('ci_color3')?.value || c.ci.primary;
   c.ci.logo    = document.getElementById('ci_logo').value.trim() || client.charAt(0);
   if (_tmpLogoImg) c.ci.logoImg = _tmpLogoImg;
   c.updatedAt  = Date.now();
@@ -2292,9 +2304,11 @@ function blendWithWhite(hex, ratio) {
   const r=parseInt(hex.slice(0,2),16), g=parseInt(hex.slice(2,4),16), b=parseInt(hex.slice(4,6),16);
   return '#'+[r,g,b].map(c=>Math.round(c*ratio+255*(1-ratio)).toString(16).padStart(2,'0')).join('');
 }
-// 4 CI-Farben aus Primärfarbe ableiten
-function ciPalette(primary) {
-  return [primary, blendWithWhite(primary,0.72), blendWithWhite(primary,0.50), blendWithWhite(primary,0.34)];
+// CI-Farbpalette: nutzt color2/color3 wenn gesetzt, sonst Abstufungen der Primärfarbe
+function ciPalette(primary, ci) {
+  const c2 = ci?.color2 && ci.color2 !== primary ? ci.color2 : blendWithWhite(primary, 0.65);
+  const c3 = ci?.color3 && ci.color3 !== primary ? ci.color3 : blendWithWhite(primary, 0.45);
+  return [primary, c2, c3, blendWithWhite(primary, 0.30)];
 }
 
 function _typeSelectHtml(type, onchangeFn) {
@@ -2449,7 +2463,7 @@ function renderDash(container) {
   if (!c.monthly?.labels?.length) { navigate('edit', ROUTE.clientId, 'data'); return; }
 
   const ci = c.ci;
-  const ins = analyze(c.monthly, c.splitLabel, c.ci.primary, c.posts, c.flopPosts);
+  const ins = analyze(c.monthly, c.splitLabel, c.ci.primary, c.posts, c.flopPosts, c.ci);
   const p = ci.primary;
 
   container.innerHTML = `
@@ -2847,7 +2861,7 @@ function renderCharts(c, ins) {
   destroyChart('posts');
   const cPosts = document.getElementById('cPosts');
   if (cPosts && c.posts?.length) {
-    charts.posts = new Chart(cPosts, { type:'bar', data:{ labels:c.posts.map(p=>p.label||p.caption.slice(0,28)+'…'), datasets:[{data:c.posts.map(p=>p.impr),backgroundColor:c.posts.map(p=>TYPE_META[p.type]?.bar||primary),borderRadius:5,borderSkipped:false}]}, options:{...base,indexAxis:'y',scales:{x:{ticks:{color:txtC,font:{size:10},callback:v=>v>=1000?(v/1000).toFixed(0)+'K':v},grid:{color:gridC}},y:{ticks:{color:txtC,font:{size:10}},grid:{display:false}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+ctx.parsed.x.toLocaleString('de-DE')+' Impressionen'}}}} });
+    charts.posts = new Chart(cPosts, { type:'bar', data:{ labels:c.posts.map(p=>p.label||p.caption.slice(0,28)+'…'), datasets:[{data:c.posts.map(p=>p.impr),backgroundColor:c.posts.map((_p,_i)=>ciPalette(primary,c.ci)[Math.min(_i,3)]),borderRadius:5,borderSkipped:false}]}, options:{...base,indexAxis:'y',scales:{x:{ticks:{color:txtC,font:{size:10},callback:v=>v>=1000?(v/1000).toFixed(0)+'K':v},grid:{color:gridC}},y:{ticks:{color:txtC,font:{size:10}},grid:{display:false}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+ctx.parsed.x.toLocaleString('de-DE')+' Impressionen'}}}} });
   }
 }
 function destroyChart(id) { if(CHARTS[id]){CHARTS[id].destroy();delete CHARTS[id];} }
@@ -2857,7 +2871,7 @@ const charts = CHARTS;
 // ══════════════════════════════════════════
 //  ANALYSIS ENGINE
 // ══════════════════════════════════════════
-function analyzeContentMix(posts, flopPosts, primary) {
+function analyzeContentMix(posts, flopPosts, primary, ci) {
   if (!posts || posts.length === 0) {
     // Fallback defaults
     return [
@@ -2902,7 +2916,7 @@ function analyzeContentMix(posts, flopPosts, primary) {
     industry:'Branchenwissen',
     thought: 'Thought Leadership',
   };
-  const palette = ciPalette(primary || '#5B63FE');
+  const palette = ciPalette(primary || '#5B63FE', ci);
 
   return ranked.map((r, i) => {
     const title = metaTitles[r.type] || r.type; // custom type: direkt als Titel
@@ -2912,7 +2926,7 @@ function analyzeContentMix(posts, flopPosts, primary) {
   });
 }
 
-function analyze(monthly, splitLabel, primary, posts, flopPosts) {
+function analyze(monthly, splitLabel, primary, posts, flopPosts, ci) {
   const {labels,impressions,followers,engagements,postsPerMonth} = monthly;
   const n = labels.length;
   const totalImpr = sum(impressions), totalFoll = sum(followers), totalEng = sum(engagements);
@@ -2978,7 +2992,7 @@ function analyze(monthly, splitLabel, primary, posts, flopPosts) {
     }
   ];
   // Auto-analyze content mix from posts data
-  const contentMix = analyzeContentMix(posts, flopPosts, p);
+  const contentMix = analyzeContentMix(posts, flopPosts, p, ci);
   const totalFollowersNow = monthly.totalFollowers || 0; // from AggregateAnalytics (e.g. 4487)
   return { totalImpr, totalFoll, totalEng, avgEngRate, avgPostsPerMonth, bestImprIdx, trendPct, trend, engLabel, engColor, beforeAfter, recommendations, contentMix, n, totalFollowersNow };
 }
