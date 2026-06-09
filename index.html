@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-57 -->
+<!-- v20260603-58 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-57';
+  const MY_V = 'v20260603-58';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -611,7 +611,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-57</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-58</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -772,16 +772,20 @@ function shareDecode(str) {
   if (str.startsWith('z2') && typeof LZString !== 'undefined') {
     // Neues Format: z2 + URL-safe base64
     const b64 = str.slice(2).replace(/-/g,'+').replace(/_/g,'/');
-    const pad = b64 + '=='.slice(0,(4-b64.length%4)%4);
-    return JSON.parse(LZString.decompressFromBase64(pad));
+    const pad = b64 + '==='.slice(0,(4-b64.length%4)%4);
+    const decompressed = LZString.decompressFromBase64(pad);
+    if (!decompressed) throw new Error('Dekomprimierung leer (z2)');
+    return JSON.parse(decompressed);
   }
   if (str.charAt(0) === 'z' && typeof LZString !== 'undefined') {
     // Altes Format: z + encodedURIComponent
-    return JSON.parse(LZString.decompressFromEncodedURIComponent(str.slice(1)));
+    const decompressed = LZString.decompressFromEncodedURIComponent(str.slice(1));
+    if (!decompressed) throw new Error('Dekomprimierung leer (z)');
+    return JSON.parse(decompressed);
   }
   // Legacy: unkomprimierter Link
   const b64 = str.replace(/-/g,'+').replace(/_/g,'/');
-  const pad = b64 + '=='.slice(0,(4-b64.length%4)%4);
+  const pad = b64 + '==='.slice(0,(4-b64.length%4)%4);
   const bin = atob(pad);
   const bytes = Uint8Array.from(bin, c=>c.charCodeAt(0));
   return JSON.parse(new TextDecoder().decode(bytes));
