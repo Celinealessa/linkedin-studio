@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-43 -->
+<!-- v20260603-44 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-43';
+  const MY_V = 'v20260603-44';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -608,7 +608,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-43</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-44</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -2160,7 +2160,7 @@ function openPostOverlay(idx) {
   const c = getClient(ROUTE.clientId);
   if (!c || !c.posts || !c.posts[idx]) return;
   const post = c.posts[idx];
-  const tm = TYPE_META[post.type] || TYPE_META.story;
+  const tm = TYPE_META[post.type] || { label: post.type||'Story', bg:'#F1EFEA', col:'#4A4A4A', bar:'#6B7A99' };
   const rc = idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':`#${idx+1}`;
 
   // Build metrics grid
@@ -2203,7 +2203,7 @@ function openFlopPostOverlay(idx) {
   const c = getClient(ROUTE.clientId);
   if (!c || !c.flopPosts || !c.flopPosts[idx]) return;
   const post = c.flopPosts[idx];
-  const tm = TYPE_META[post.type] || TYPE_META.story;
+  const tm = TYPE_META[post.type] || { label: post.type||'Story', bg:'#F1EFEA', col:'#4A4A4A', bar:'#6B7A99' };
   const metrics = [];
   if (post.impr)     metrics.push({val:post.impr.toLocaleString('de-DE'),    lbl:'Impressionen', icon:'👁️'});
   if (post.eng)      metrics.push({val:post.eng.toLocaleString('de-DE'),     lbl:'Engagements',  icon:'⚡'});
@@ -2284,13 +2284,44 @@ const TYPE_META = {
   thought:    { label:'Thought Leadership',  bg:'#FFF0E8', col:'#7A3000', bar:'#FF6600' },
   industry:   { label:'Branchenwissen',      bg:'#FFF0E8', col:'#7A3000', bar:'#FF6600' },
 };
-const TYPE_OPTS = Object.entries(TYPE_META).map(([v,m])=>`<option value="${v}">${m.label}</option>`).join('');
+
+// Hex-Farbe mit Weiß mischen (ratio 0=weiß, 1=originalfarbe)
+function blendWithWhite(hex, ratio) {
+  hex = hex.replace('#','');
+  if (hex.length===3) hex=hex.split('').map(c=>c+c).join('');
+  const r=parseInt(hex.slice(0,2),16), g=parseInt(hex.slice(2,4),16), b=parseInt(hex.slice(4,6),16);
+  return '#'+[r,g,b].map(c=>Math.round(c*ratio+255*(1-ratio)).toString(16).padStart(2,'0')).join('');
+}
+// 4 CI-Farben aus Primärfarbe ableiten
+function ciPalette(primary) {
+  return [primary, blendWithWhite(primary,0.72), blendWithWhite(primary,0.50), blendWithWhite(primary,0.34)];
+}
+
+function _typeSelectHtml(type, onchangeFn) {
+  const isKnown = !!TYPE_META[type];
+  const cval = isKnown ? '' : type;
+  const selVal = isKnown ? type : '_custom_';
+  const opts = Object.entries(TYPE_META)
+    // deduplicate by label
+    .filter(([v],_,arr) => !['brand','network','thought','industry'].includes(v))
+    .map(([v,m])=>`<option value="${v}" ${v===selVal?'selected':''}>${m.label}</option>`).join('')
+    + `<option value="_custom_" ${selVal==='_custom_'?'selected':''}>＋ Eigenes Label…</option>`;
+  return { opts, isKnown, cval };
+}
+
 let _pRowId = 0;
+function toggleCustomType(rid, bodyId) {
+  const sel = document.getElementById('typesel_'+rid);
+  const inp = document.getElementById('customtype_'+rid);
+  if (!sel||!inp) return;
+  inp.style.display = sel.value === '_custom_' ? 'block' : 'none';
+}
 function addPostRow(cap='', lbl='', impr='', likes='', comm='', shares='', eng='', url='', type='story') {
   _pRowId++;
+  const rid = _pRowId;
   const tbody = document.getElementById('postsBody');
   const tr = document.createElement('tr');
-  const opts = Object.entries(TYPE_META).map(([v,m])=>`<option value="${v}" ${v===type?'selected':''}>${m.label}</option>`).join('');
+  const {opts, isKnown, cval} = _typeSelectHtml(type);
   tr.innerHTML = `
     <td class="t-left"><input value="${esc(cap)}" placeholder="Caption…" style="width:200px;text-align:left;font-family:'DM Sans',sans-serif"></td>
     <td class="t-left"><input value="${esc(lbl)}" placeholder="Titel · Monat Jahr" style="width:130px;text-align:left;font-family:'DM Sans',sans-serif"></td>
@@ -2300,7 +2331,8 @@ function addPostRow(cap='', lbl='', impr='', likes='', comm='', shares='', eng='
     <td><input type="number" value="${shares}" placeholder="0"></td>
     <td><input type="number" value="${eng}" placeholder="0"></td>
     <td class="t-left"><input value="${esc(url)}" placeholder="https://…" style="width:130px;text-align:left;font-family:'DM Sans',sans-serif"></td>
-    <td><select style="width:140px;padding:4px 7px;border:1px solid var(--border);border-radius:5px;font-size:12px;font-family:'DM Sans',sans-serif;background:#fff">${opts}</select></td>
+    <td><select id="typesel_${rid}" onchange="toggleCustomType(${rid})" style="width:140px;padding:4px 7px;border:1px solid var(--border);border-radius:5px;font-size:12px;font-family:'DM Sans',sans-serif;background:#fff">${opts}</select>
+        <input id="customtype_${rid}" class="custom-type-input" value="${esc(cval)}" placeholder="Label eingeben…" style="display:${isKnown?'none':'block'};width:132px;margin-top:3px;padding:3px 7px;border:1px solid var(--border);border-radius:5px;font-size:12px;font-family:'DM Sans',sans-serif"></td>
     <td><button class="del-btn" onclick="this.closest('tr').remove()">✕</button></td>`;
   tbody.appendChild(tr);
 }
@@ -2312,10 +2344,11 @@ function restorePostsRows(posts) {
 }
 function addFlopPostRow(cap='', lbl='', impr='', likes='', comm='', shares='', eng='', url='', type='story') {
   _pRowId++;
+  const rid = _pRowId;
   const tbody = document.getElementById('flopPostsBody');
   if (!tbody) return;
   const tr = document.createElement('tr');
-  const opts = Object.entries(TYPE_META).map(([v,m])=>`<option value="${v}" ${v===type?'selected':''}>${m.label}</option>`).join('');
+  const {opts, isKnown, cval} = _typeSelectHtml(type);
   tr.innerHTML = `
     <td class="t-left"><input value="${esc(cap)}" placeholder="Caption…" style="width:200px;text-align:left;font-family:'DM Sans',sans-serif"></td>
     <td class="t-left"><input value="${esc(lbl)}" placeholder="Titel · Monat Jahr" style="width:130px;text-align:left;font-family:'DM Sans',sans-serif"></td>
@@ -2325,7 +2358,8 @@ function addFlopPostRow(cap='', lbl='', impr='', likes='', comm='', shares='', e
     <td><input type="number" value="${shares}" placeholder="0"></td>
     <td><input type="number" value="${eng}" placeholder="0"></td>
     <td class="t-left"><input value="${esc(url)}" placeholder="https://…" style="width:130px;text-align:left;font-family:'DM Sans',sans-serif"></td>
-    <td><select style="width:140px;padding:4px 7px;border:1px solid var(--border);border-radius:5px;font-size:12px;font-family:'DM Sans',sans-serif;background:#fff">${opts}</select></td>
+    <td><select id="typesel_${rid}" onchange="toggleCustomType(${rid})" style="width:140px;padding:4px 7px;border:1px solid var(--border);border-radius:5px;font-size:12px;font-family:'DM Sans',sans-serif;background:#fff">${opts}</select>
+        <input id="customtype_${rid}" class="custom-type-input" value="${esc(cval)}" placeholder="Label eingeben…" style="display:${isKnown?'none':'block'};width:132px;margin-top:3px;padding:3px 7px;border:1px solid var(--border);border-radius:5px;font-size:12px;font-family:'DM Sans',sans-serif"></td>
     <td><button class="del-btn" onclick="this.closest('tr').remove()">✕</button></td>`;
   tbody.appendChild(tr);
 }
@@ -2335,13 +2369,21 @@ function restoreFlopPostsRows(posts) {
   tbody.innerHTML = '';
   (posts||[]).forEach(p => addFlopPostRow(p.caption, p.label, p.impr, p.likes||0, p.comments||0, p.shares||0, p.eng||0, p.url||'', p.type));
 }
+function _readType(tr) {
+  const sel = tr.querySelector('select');
+  if (!sel) return 'story';
+  if (sel.value === '_custom_') {
+    const ci = tr.querySelector('.custom-type-input');
+    return ci?.value.trim() || 'story';
+  }
+  return sel.value || 'story';
+}
 function readFlopPosts() {
   return [...document.querySelectorAll('#flopPostsBody tr')].map(tr => {
     const inp = tr.querySelectorAll('input');
-    const sel = tr.querySelector('select');
     const cap = inp[0]?.value.trim();
     if (!cap) return null;
-    return { caption:cap, label:inp[1]?.value.trim(), impr:toN(inp[2]?.value), likes:toN(inp[3]?.value), comments:toN(inp[4]?.value), shares:toN(inp[5]?.value), eng:toN(inp[6]?.value), url:inp[7]?.value.trim(), type:sel?.value||'story' };
+    return { caption:cap, label:inp[1]?.value.trim(), impr:toN(inp[2]?.value), likes:toN(inp[3]?.value), comments:toN(inp[4]?.value), shares:toN(inp[5]?.value), eng:toN(inp[6]?.value), url:inp[7]?.value.trim(), type:_readType(tr) };
   }).filter(Boolean).sort((a,b)=>a.impr-b.impr);
 }
 function switchPostView(mode) {
@@ -2373,10 +2415,9 @@ function sortPostsTable(tbodyId, col, dir) {
 function readPosts() {
   return [...document.querySelectorAll('#postsBody tr')].map(tr => {
     const inp = tr.querySelectorAll('input');
-    const sel = tr.querySelector('select');
     const cap = inp[0]?.value.trim();
     if (!cap) return null;
-    return { caption:cap, label:inp[1]?.value.trim(), impr:toN(inp[2]?.value), likes:toN(inp[3]?.value), comments:toN(inp[4]?.value), shares:toN(inp[5]?.value), eng:toN(inp[6]?.value), url:inp[7]?.value.trim(), type:sel?.value||'story' };
+    return { caption:cap, label:inp[1]?.value.trim(), impr:toN(inp[2]?.value), likes:toN(inp[3]?.value), comments:toN(inp[4]?.value), shares:toN(inp[5]?.value), eng:toN(inp[6]?.value), url:inp[7]?.value.trim(), type:_readType(tr) };
   }).filter(Boolean).sort((a,b)=>b.impr-a.impr);
 }
 function autoSavePosts() {
@@ -2850,21 +2891,24 @@ function analyzeContentMix(posts, flopPosts, primary) {
     return { type, avgImpr: Math.max(0,avgImpr), score, count: s.count };
   }).sort((a,b) => b.score - a.score);
 
-  const meta = {
-    humor:   { color:'#00A86B', title:'Persönlich / Humor',   base:'Emotionale Reichweite' },
-    tech:    { color:'#5B63FE', title:'Tech / Trend',          base:'Neue Zielgruppen' },
-    network: { color:'#7B68EE', title:'Networking',            base:'Community aufbauen' },
-    story:   { color:'#6B7A99', title:'Brand / Story',         base:'Vertrauen aufbauen' },
-    branch:  { color:'#FF6600', title:'Branchenwissen',        base:'Thought Leadership' },
+  const metaTitles = {
+    humor:   'Persönlich / Humor',
+    tech:    'Tech / Trend',
+    network: 'Networking',
+    networking: 'Networking',
+    story:   'Brand / Story',
+    brand:   'Brand / Story',
+    branch:  'Branchenwissen',
+    industry:'Branchenwissen',
+    thought: 'Thought Leadership',
   };
+  const palette = ciPalette(primary || '#5B63FE');
 
-  const total = ranked.length;
   return ranked.map((r, i) => {
-    const m = meta[r.type] || { color:'#6B7A99', title: r.type, base:'Kontinuität' };
-    // Assign frequencies: #1 = 3-4×, #2 = 2-3×, rest = 1-2×
+    const title = metaTitles[r.type] || r.type; // custom type: direkt als Titel
     const num = i === 0 ? '3–4×' : i === 1 ? '2–3×' : i < 3 ? '1–2×' : '1×';
-    const avgLabel = r.avgImpr > 0 ? `Ø ${fmt(Math.round(r.avgImpr))} Impr.` : m.base;
-    return { num, color: m.color, title: m.title, sub: avgLabel };
+    const avgLabel = r.avgImpr > 0 ? `Ø ${fmt(Math.round(r.avgImpr))} Impr.` : 'Kontinuität';
+    return { num, color: palette[Math.min(i, palette.length-1)], title, sub: avgLabel };
   });
 }
 
