@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<!-- v20260603-63 -->
+<!-- v20260603-64 -->
+<script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-63';
+  const MY_V = 'v20260603-64';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -611,7 +612,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-63</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-64</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -667,14 +668,30 @@ body {
 const STORAGE_KEY = 'linkedin_studio_v2';
 
 function loadApp() {
+  // 1. Eingebettete Daten im HTML (Desktop-Datei, immer aktuell)
+  try {
+    const tag = document.getElementById('__appdata');
+    if (tag) {
+      const embedded = JSON.parse(tag.textContent);
+      if (embedded && embedded.clients) return embedded;
+    }
+  } catch(e) {}
+  // 2. Fallback: localStorage (GitHub Pages)
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : { clients: [] };
-  } catch { return { clients: [] }; }
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return { clients: [] };
 }
 
 function saveApp() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(APP)); } catch(e) { showToast('Speichern fehlgeschlagen', 'warn'); }
+  // Immer in localStorage speichern
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(APP)); } catch(e) {}
+  // Eingebetteten Daten-Tag aktualisieren (für Desktop-Datei-Export)
+  try {
+    const tag = document.getElementById('__appdata');
+    if (tag) tag.textContent = JSON.stringify(APP);
+  } catch(e) {}
 }
 
 const APP = loadApp();
