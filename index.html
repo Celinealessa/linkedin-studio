@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-60 -->
+<!-- v20260603-61 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-60';
+  const MY_V = 'v20260603-61';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -611,7 +611,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-60</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-61</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -681,6 +681,8 @@ const APP = loadApp();
 
 // ── PAYBACK Daten — immer aktuell halten (überschreibt alten/kaputten Stand)
 (function ensurePaybackClient() {
+  // Wenn der User diesen Client explizit gelöscht hat, nicht neu erstellen
+  if ((APP.deletedClientIds || []).includes('payback2025')) return;
   const paybackMonthly = {"labels":["Jun 25","Jul 25","Aug 25","Sep 25","Okt 25","Nov 25","Dez 25","Jan 26","Feb 26","Mrz 26","Apr 26","Mai 26","Jun 26"],"impressions":[17874,9363,4208,63803,67830,42019,154526,54329,58040,38940,49931,93292,4833],"engagements":[542,303,204,1704,1542,858,1660,1087,1120,1113,1417,969,120],"followers":[79,45,64,456,234,171,378,203,184,229,543,287,12],"postsPerMonth":[0,0,0,0,0,0,0,0,0,0,0,0,0],"_sortKeys":["2025-06","2025-07","2025-08","2025-09","2025-10","2025-11","2025-12","2026-01","2026-02","2026-03","2026-04","2026-05","2026-06"],"totalFollowers":4487};
   const paybackPosts = [
     {caption:'„Ich habe so viele PAYBACK Punkte, der nächste Wasserkocher geht auf meinen Nacken."',label:'Wasserkocher · Dez 2025',impr:88810,likes:0,comments:32,shares:0,eng:381,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_ich-habe-so-viele-payback-punkte-der-n%C3%A4chste-share-7404056454661320706-AcMt',type:'humor'},
@@ -708,12 +710,15 @@ const APP = loadApp();
     ...base,
     id: 'payback2025',
     ci: { client:'PAYBACK', person:'Dominik Dommick', period:'Jun 2025 – Jun 2026', primary:'#003087', accent:'#FFD100', logo:'P', logoImg:'', agency:'Branding People GmbH', ...(base.ci||{}) },
-    monthly: paybackMonthly,
+    monthly: (base.monthly && base.monthly.labels && base.monthly.labels.length > 0) ? base.monthly : paybackMonthly,
     posts: (base.posts && base.posts.length > 0) ? base.posts : paybackPosts,
-    flopPosts: (base.flopPosts && base.flopPosts.length > 0) ? base.flopPosts : [],
+    flopPosts: (base.flopPosts && base.flopPosts.length > 0) ? base.flopPosts : paybackFlopPosts,
     splitLabel: base.splitLabel || 'Sep 25',
-    _loadedFiles: ['AggregateAnalytics_Dominik Dommick_2025-06-04_2026-06-03.xlsx'],
-    updatedAt: Date.now()
+    recommendations: base.recommendations || null,
+    contentMix: base.contentMix || null,
+    customNote: base.customNote || '',
+    _loadedFiles: base._loadedFiles || ['AggregateAnalytics_Dominik Dommick_2025-06-04_2026-06-03.xlsx'],
+    updatedAt: base.updatedAt || Date.now()
   };
   if (idx >= 0) APP.clients[idx] = fresh;
   else APP.clients.unshift(fresh);
@@ -3180,6 +3185,9 @@ function askDeleteClient(id) {
 
 function deleteClient(id) {
   APP.clients = APP.clients.filter(c=>c.id!==id);
+  // Merken welche Clients gelöscht wurden, damit IIFE sie nicht neu erstellt
+  if (!APP.deletedClientIds) APP.deletedClientIds = [];
+  if (!APP.deletedClientIds.includes(id)) APP.deletedClientIds.push(id);
   saveApp();
   navigate('home');
   showToast('Kunde gelöscht');
