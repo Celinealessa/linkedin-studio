@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-42 -->
+<!-- v20260603-43 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-42';
+  const MY_V = 'v20260603-43';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -608,7 +608,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-42</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-43</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -1766,23 +1766,13 @@ function parseLinkedInAggregateAnalytics(wb) {
 
   const sorted = [...monthMap.values()].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
 
-  const d = {
-    labels:         sorted.map(m => m.label),
-    impressions:    sorted.map(m => m.impressions),
-    followers:      sorted.map(m => m.newFollowers),  // neue Follower pro Monat (direkt aus Export)
-    engagements:    sorted.map(m => m.engagements),
-    postsPerMonth:  sorted.map(() => 0),
-    _sortKeys:      sorted.map(m => m.sortKey),
-    totalFollowers: totalFollowers  // Gesamtfollower (z.B. 4487)
-  };
-
   // TOP POSTS sheet — two side-by-side tables merged by URL
   const autoPosts = [];
   const autoFlopPosts = [];
-  if (topWs && d.labels.length > 0) {
+  // postsPerMonthMap: sortKey → count (aus TOP-Beiträge Sheet)
+  const postsPerMonthMap = new Map();
+  if (topWs && sorted.length > 0) {
     const topRows = XLSX.utils.sheet_to_json(topWs, {header:1, defval:'', raw:false});
-    // Row 2: ["Post URL","Post Publish Date","Engagements","","Post URL","Post Publish Date","Impressions"]
-    // Row 3+: data
     const postMap = new Map();
     for (let i = 3; i < topRows.length; i++) {
       const row = topRows[i];
@@ -1799,6 +1789,13 @@ function parseLinkedInAggregateAnalytics(wb) {
         postMap.get(url2).impr = Math.max(postMap.get(url2).impr, parseNum(row[6]));
       }
     }
+    // Zähle Posts pro Monat anhand Veröffentlichungsdatum
+    postMap.forEach(p => {
+      const parsed = parseDate(p.date);
+      if (!parsed) return;
+      const key = `${parsed.year}-${String(parsed.month+1).padStart(2,'0')}`;
+      postsPerMonthMap.set(key, (postsPerMonthMap.get(key)||0) + 1);
+    });
     const allSorted = [...postMap.values()].sort((a,b) => b.impr - a.impr || b.eng - a.eng);
     allSorted.slice(0, 10).forEach(p => {
         const caption = extractCaptionFromUrl(p.url);
@@ -1808,6 +1805,16 @@ function parseLinkedInAggregateAnalytics(wb) {
     // NOTE: LinkedIn exportiert nur die TOP-50 Beiträge — keine echten Flop-Posts erkennbar.
     // autoFlopPosts bleibt leer → Nutzer trägt Flop-Posts manuell ein.
   }
+
+  const d = {
+    labels:         sorted.map(m => m.label),
+    impressions:    sorted.map(m => m.impressions),
+    followers:      sorted.map(m => m.newFollowers),  // neue Follower pro Monat (direkt aus Export)
+    engagements:    sorted.map(m => m.engagements),
+    postsPerMonth:  sorted.map(m => postsPerMonthMap.get(m.sortKey) || 0),
+    _sortKeys:      sorted.map(m => m.sortKey),
+    totalFollowers: totalFollowers  // Gesamtfollower (z.B. 4487)
+  };
 
   if (!d.labels.length) return null;
   return { d, mode:'post-level', months:d.labels.length, totalRows:sorted.length, autoPosts, autoFlopPosts };
