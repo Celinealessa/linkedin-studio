@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-48 -->
+<!-- v20260603-49 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-48';
+  const MY_V = 'v20260603-49';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -31,6 +31,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
 <style>
 /* ══════════════════════════════════════════
    TOKENS & RESET
@@ -608,7 +609,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-48</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-49</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -753,12 +754,20 @@ const ROUTE = { view: 'home', clientId: null, step: 'ci' };
 // ══════════════════════════════════════════
 // ── Share encoding (URL-safe base64, UTF-8 safe)
 function shareEncode(obj) {
+  // LZ-String komprimiert JSON ~70% kleiner → kürzere URLs
+  if (typeof LZString !== 'undefined') {
+    return 'z' + LZString.compressToEncodedURIComponent(JSON.stringify(obj));
+  }
+  // Fallback ohne Kompression
   const bytes = new TextEncoder().encode(JSON.stringify(obj));
-  let bin = '';
-  bytes.forEach(b => bin += String.fromCharCode(b));
+  let bin = ''; bytes.forEach(b => bin += String.fromCharCode(b));
   return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
 }
 function shareDecode(str) {
+  if (str.charAt(0) === 'z' && typeof LZString !== 'undefined') {
+    return JSON.parse(LZString.decompressFromEncodedURIComponent(str.slice(1)));
+  }
+  // Legacy: unkomprimierter Link
   const b64 = str.replace(/-/g,'+').replace(/_/g,'/');
   const pad = b64 + '=='.slice(0,(4-b64.length%4)%4);
   const bin = atob(pad);
@@ -770,10 +779,17 @@ function shareDecode(str) {
 function copyShareLink(clientId) {
   const c = getClient(clientId);
   if (!c) return;
+  // Captions auf 120 Zeichen kürzen, URL-Felder behalten aber komprimieren
+  const trimPosts = (arr) => (arr||[]).map(p => ({
+    caption: (p.caption||'').slice(0,120),
+    label: p.label, impr: p.impr, eng: p.eng,
+    likes: p.likes||0, comments: p.comments||0, shares: p.shares||0,
+    url: p.url||'', type: p.type||'story'
+  }));
   const payload = {
     ci: {...c.ci, logoImg:''},   // strip logo image (too large)
     monthly: c.monthly,
-    posts: c.posts||[], flopPosts: c.flopPosts||[],
+    posts: trimPosts(c.posts), flopPosts: trimPosts(c.flopPosts),
     splitLabel: c.splitLabel||'',
     recommendations: c.recommendations||null,
     contentMix: c.contentMix||null,
