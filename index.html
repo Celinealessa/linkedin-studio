@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260603-58 -->
+<!-- v20260603-59 -->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260603-58';
+  const MY_V = 'v20260603-59';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -611,7 +611,7 @@ body {
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-58</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260603-59</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -817,7 +817,7 @@ function copyShareLink(clientId) {
   try {
     const payload = buildSharePayload(c);
     const encoded = shareEncode(payload);  // LZString inline → immer verfügbar
-    const url = 'https://celinealessa.github.io/linkedin-studio/#share=' + encoded;
+    const url = 'https://celinealessa.github.io/linkedin-studio/?share=' + encoded;
     const primary = c.ci.primary || '#5B63FE';
     // Dialog einblenden
     document.getElementById('_shareDlg')?.remove();
@@ -852,11 +852,16 @@ function copyShareLink(clientId) {
   }
 }
 
-// ── On load: #share=… → Dashboard direkt aus URL laden
+// ── On load: ?share=… (oder legacy #share=…) → Dashboard direkt aus URL laden
 function checkShareParam() {
-  const hash = location.hash;
-  if (!hash.startsWith('#share=')) return false;
-  const encoded = hash.slice(7);
+  // Neues Format: ?share= (Query-Parameter, WhatsApp-sicher)
+  const params = new URLSearchParams(location.search);
+  let encoded = params.get('share');
+  // Legacy-Fallback: #share= (altes Format)
+  if (!encoded) {
+    const hash = location.hash;
+    if (hash.startsWith('#share=')) encoded = hash.slice(7);
+  }
   if (!encoded) return false;
 
   // Lade-Anzeige sofort zeigen
