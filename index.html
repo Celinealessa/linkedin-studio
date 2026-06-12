@@ -3825,21 +3825,31 @@ function editInsight(idx, cid) {
 }
 
 function saveInsight() {
-  const idx = parseInt(document.getElementById('insightEditIdx').value);
-  const cid = document.getElementById('insightEditCid').value;
-  const c = getClient(cid);
-  if (!c) return;
-  if (!c.insightOverrides) c.insightOverrides = [{},{},{}];
-  c.insightOverrides[idx] = {
-    val:   document.getElementById('insight_val').value.trim(),
-    title: document.getElementById('insight_title').value.trim(),
-    body:  document.getElementById('insight_body').value.trim(),
-    rec:   document.getElementById('insight_rec').value.trim()
-  };
-  saveApp();
-  closeModal('insightEditModal');
-  renderApp();
-  showToast('Kachel gespeichert', 'ok');
+  try {
+    const idxEl = document.getElementById('insightEditIdx');
+    const cidEl = document.getElementById('insightEditCid');
+    if (!idxEl || !cidEl) { showToast('Fehler: Modal-Felder fehlen','warn'); return; }
+    const idx = parseInt(idxEl.value);
+    const cid = cidEl.value;
+    const c = getClient(cid);
+    if (!c) { showToast('Fehler: Kunde "'+cid+'" nicht gefunden','warn'); return; }
+    if (!c.insightOverrides) c.insightOverrides = [{},{},{}];
+    while (c.insightOverrides.length < 3) c.insightOverrides.push({});
+    c.insightOverrides[idx] = {
+      val:   document.getElementById('insight_val').value.trim(),
+      title: document.getElementById('insight_title').value.trim(),
+      body:  document.getElementById('insight_body').value.trim(),
+      rec:   document.getElementById('insight_rec').value.trim()
+    };
+    saveApp();
+    closeModal('insightEditModal');
+    closeModal('insightDetailModal');
+    renderApp();
+    showToast('✅ Kachel gespeichert', 'ok');
+  } catch(e) {
+    showToast('Fehler beim Speichern: '+e.message,'warn');
+    console.error('[saveInsight]',e);
+  }
 }
 
 function resetInsight() {
