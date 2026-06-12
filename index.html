@@ -1256,6 +1256,31 @@ function renderEdit(container) {
           <span id="ciBarName" style="font-weight:600">${ci.client || 'Kundenname'} · LinkedIn Analytics</span>
         </div>
       </div>
+      <!-- Ziele -->
+      <div class="edit-section" style="margin-top:14px">
+        <div class="edit-section-title">🎯 Ziele <span style="font-size:11px;font-weight:400;color:var(--muted)">— optional, werden im Dashboard als Fortschritt angezeigt</span></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">🔭 Ziel Impressionen</label>
+            <input class="form-input" type="number" id="goal_impressions" value="${c.goals?.impressions||''}" placeholder="z.B. 500000" oninput="liveEditCI()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">👥 Ziel Follower</label>
+            <input class="form-input" type="number" id="goal_followers" value="${c.goals?.followers||''}" placeholder="z.B. 10000" oninput="liveEditCI()">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">💬 Ziel Engagements</label>
+            <input class="form-input" type="number" id="goal_engagements" value="${c.goals?.engagements||''}" placeholder="z.B. 5000" oninput="liveEditCI()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">🎯 Ziel Leads / Anfragen</label>
+            <input class="form-input" type="number" id="goal_leads" value="${c.goals?.leads||''}" placeholder="z.B. 50" oninput="liveEditCI()">
+          </div>
+        </div>
+      </div>
+
       <div style="display:flex;justify-content:flex-end;gap:8px">
         <button class="btn btn-primary" onclick="saveCIAndNext()">Weiter → Daten eingeben</button>
       </div>
@@ -1503,6 +1528,14 @@ function liveEditCI() {
   c.ci.color2  = document.getElementById('ci_color2')?.value || primary;
   c.ci.color3  = document.getElementById('ci_color3')?.value || primary;
   c.ci.logo    = logo;
+  // Ziele speichern
+  const gi = v => { const n = parseInt(document.getElementById(v)?.value); return n > 0 ? n : null; };
+  c.goals = {
+    impressions: gi('goal_impressions'),
+    followers:   gi('goal_followers'),
+    engagements: gi('goal_engagements'),
+    leads:       gi('goal_leads')
+  };
   c.updatedAt  = Date.now();
   saveApp();
   renderSidebar();
@@ -2752,6 +2785,48 @@ function buildDashHTML(c, ins) {
       <div class="kpi-sub">${engLabel} · Benchmark: 1–2%</div>
     </div>
   </div>`;
+
+  // ── Ziele-Fortschritt
+  if (c.goals && Object.values(c.goals).some(v => v > 0)) {
+    const g = c.goals;
+    const monthly = c.monthly;
+    // Kumulierte Werte berechnen + Monat des Erreichens finden
+    const goalItems = [
+      { key:'impressions', label:'Impressionen', icon:'🔭', target:g.impressions, current:totalImpr,
+        reached: (() => { let cum=0; for(let i=0;i<monthly.labels.length;i++){ cum+=monthly.impressions[i]; if(cum>=g.impressions) return monthly.labels[i]; } return null; })() },
+      { key:'followers', label:'Follower', icon:'👥', target:g.followers, current: totalFollowersNow || totalFoll,
+        reached: (() => { if(totalFollowersNow && totalFollowersNow >= g.followers) return monthly.labels[monthly.labels.length-1]; let cum=0; for(let i=0;i<monthly.labels.length;i++){ cum+=monthly.followers[i]; if(cum>=g.followers) return monthly.labels[i]; } return null; })() },
+      { key:'engagements', label:'Engagements', icon:'💬', target:g.engagements, current:totalEng,
+        reached: (() => { let cum=0; for(let i=0;i<monthly.labels.length;i++){ cum+=monthly.engagements[i]; if(cum>=g.engagements) return monthly.labels[i]; } return null; })() },
+      { key:'leads', label:'Leads / Anfragen', icon:'🎯', target:g.leads, current:null, reached:null }
+    ].filter(item => item.target > 0);
+
+    html += `<div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:1.25rem;box-shadow:var(--shadow)">
+      <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px;display:flex;align-items:center;gap:8px">
+        <span style="font-size:18px">🎯</span> Ziele & Fortschritt
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        ${goalItems.map(item => {
+          const pct = item.current != null ? Math.min(100, Math.round(item.current / item.target * 100)) : null;
+          const done = item.reached != null;
+          const barColor = done ? '#00A86B' : p;
+          return `<div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+              <span style="font-size:13px;font-weight:600;color:var(--text)">${item.icon} ${item.label}</span>
+              <span style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px">
+                ${done ? `<span style="background:#E8F8F2;color:#00624A;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700">✅ Erreicht: ${item.reached}</span>` : ''}
+                ${item.current != null ? `<span style="font-weight:600;color:var(--text)">${fmt(item.current)}</span> <span>/ ${fmt(item.target)}</span>` : `<span style="color:#aaa;font-size:11px">manuell tracken</span> <span>Ziel: ${fmt(item.target)}</span>`}
+              </span>
+            </div>
+            ${pct != null ? `<div style="background:#F0F1F8;border-radius:999px;height:8px;overflow:hidden">
+              <div style="width:${pct}%;height:100%;background:${barColor};border-radius:999px;transition:width .5s ease"></div>
+            </div>
+            <div style="font-size:11px;color:${done?'#00A86B':barColor};margin-top:3px;font-weight:600">${pct}%${done ? ' — Ziel erreicht 🎉' : ' des Ziels erreicht'}</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
 
   // ── "Seit Zusammenarbeit" Zusammenfassungs-Banner
   if (beforeAfter && c.splitLabel) {
