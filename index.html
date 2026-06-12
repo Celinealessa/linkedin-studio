@@ -2722,14 +2722,22 @@ function buildDataInsights(c, ins, p) {
   // Helper: Insight-Kachel mit Edit + Detail Buttons
   const cid = c.id;
   const ov = c.insightOverrides || [{},{},{}];
+  // Auto-generierte Werte für Edit-Modal bereitstellen
+  if (!c._insightAuto) c._insightAuto = [{},{},{}];
+
   function insightCard(idx, accentColor, badgeBg, badgeCol, badgeText, val, title, body, rec, detailPosts) {
     const o = ov[idx] || {};
     const displayVal   = o.val   || val;
     const displayTitle = o.title || title;
     const displayBody  = o.body  || body;
     const displayRec   = o.rec   || rec;
-    // Detail-Posts als JSON für Modal
-    const detailJson = encodeURIComponent(JSON.stringify(detailPosts||[]));
+    // Auto-Werte für Edit-Modal merken (plain text, HTML-Tags raus)
+    c._insightAuto[idx] = {
+      val,
+      title,
+      body: body.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim(),
+      rec
+    };
     return `<div class="strat-card" style="cursor:pointer" onclick="openInsightDetail(${idx},'${cid}')">
       <div class="strat-accent" style="background:${accentColor}"></div>
       <button class="strat-edit-btn" onclick="event.stopPropagation();editInsight(${idx},'${cid}')" style="opacity:1;right:44px">✏️</button>
@@ -3819,10 +3827,11 @@ function editInsight(idx, cid) {
   const ov = (c.insightOverrides||[])[idx] || {};
   document.getElementById('insightEditIdx').value = idx;
   document.getElementById('insightEditCid').value = cid;
-  document.getElementById('insight_val').value   = ov.val   || '';
-  document.getElementById('insight_title').value = ov.title || '';
-  document.getElementById('insight_body').value  = ov.body  || '';
-  document.getElementById('insight_rec').value   = ov.rec   || '';
+  const auto = c._insightAuto?.[idx] || {};
+  document.getElementById('insight_val').value   = ov.val   || auto.val   || '';
+  document.getElementById('insight_title').value = ov.title || auto.title || '';
+  document.getElementById('insight_body').value  = ov.body  || auto.body  || '';
+  document.getElementById('insight_rec').value   = ov.rec   || auto.rec   || '';
   openModal('insightEditModal');
 }
 
