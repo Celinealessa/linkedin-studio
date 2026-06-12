@@ -3770,6 +3770,7 @@ if (!checkShareParam()) { renderApp(); }
       <div class="form-group" style="margin:0"><label class="form-label">📌 Titel</label><input class="form-input" id="insight_title"></div>
       <div class="form-group" style="margin:0"><label class="form-label">📝 Beschreibung</label><textarea class="form-input" id="insight_body" rows="5" style="resize:vertical;line-height:1.6"></textarea></div>
       <div class="form-group" style="margin:0"><label class="form-label">→ Empfehlung / Maßnahme</label><input class="form-input" id="insight_rec"></div>
+      <div class="form-group" style="margin:0"><label class="form-label">🔗 Link zum Beitrag (optional)</label><input class="form-input" id="insight_url" placeholder="https://www.linkedin.com/posts/…"></div>
     </div>
     <div class="modal-f">
       <button class="btn" onclick="closeModal('insightEditModal')">Abbrechen</button>
@@ -3794,11 +3795,15 @@ function openInsightDetail(idx, cid) {
 
     document.getElementById('insightDetailTitle').textContent = displayTitle;
 
+    // URLs im Body-Text automatisch verlinken
+    const displayUrl = ov.url || '';
+    const linkedBody = displayBody.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:#0A66C2;word-break:break-all">$1</a>');
     const cardHtml = `
       <div style="background:#F4F5FF;border:1px solid #C7CAFF;border-radius:12px;padding:18px 20px">
         ${displayVal ? `<div style="font-size:26px;font-weight:800;color:#5B63FE;margin-bottom:6px">${displayVal}</div>` : ''}
-        ${displayBody ? `<div style="font-size:14px;line-height:1.7;color:var(--text);margin-bottom:${displayRec?'12px':'0'}">${displayBody}</div>` : ''}
+        ${displayBody ? `<div style="font-size:14px;line-height:1.7;color:var(--text);margin-bottom:${displayRec?'12px':'0'}">${linkedBody}</div>` : ''}
         ${displayRec ? `<div style="font-size:13px;color:#5B63FE;font-weight:600;border-top:1px solid #C7CAFF;padding-top:10px;margin-top:4px">→ ${displayRec}</div>` : ''}
+        ${displayUrl ? `<a href="${displayUrl}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;margin-top:14px;background:#0A66C2;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none">↗ Beitrag auf LinkedIn öffnen</a>` : ''}
       </div>`;
 
     document.getElementById('insightDetailBody').innerHTML = cardHtml;
@@ -3821,6 +3826,7 @@ function editInsight(idx, cid) {
   document.getElementById('insight_title').value = ov.title || auto.title || '';
   document.getElementById('insight_body').value  = ov.body  || auto.body  || '';
   document.getElementById('insight_rec').value   = ov.rec   || auto.rec   || '';
+  document.getElementById('insight_url').value   = ov.url   || '';
   openModal('insightEditModal');
 }
 
@@ -3839,7 +3845,8 @@ function saveInsight() {
       val:   document.getElementById('insight_val').value.trim(),
       title: document.getElementById('insight_title').value.trim(),
       body:  document.getElementById('insight_body').value.trim(),
-      rec:   document.getElementById('insight_rec').value.trim()
+      rec:   document.getElementById('insight_rec').value.trim(),
+      url:   document.getElementById('insight_url').value.trim()
     };
     saveApp();
     closeModal('insightEditModal');
