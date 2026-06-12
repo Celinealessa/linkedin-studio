@@ -844,6 +844,8 @@ function buildSharePayload(c) {
     posts: (c.posts||[]).map(p=>({caption:(p.caption||'').slice(0,120),label:p.label,impr:p.impr||0,eng:p.eng||0,likes:p.likes||0,comments:p.comments||0,shares:p.shares||0,url:p.url||'',type:p.type||'story'})),
     flopPosts: (c.flopPosts||[]).map(p=>({caption:(p.caption||'').slice(0,120),label:p.label,impr:p.impr||0,eng:p.eng||0,likes:p.likes||0,comments:p.comments||0,shares:p.shares||0,url:p.url||'',type:p.type||'story'})),
     splitLabel: c.splitLabel||'',
+    goals: c.goals||null,
+    insightOverrides: c.insightOverrides||null,
     recommendations: c.recommendations||null,
     contentMix: c.contentMix||null,
     customNote: c.customNote||''
