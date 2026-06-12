@@ -936,6 +936,8 @@ function checkShareParam() {
 
 // ── Isolated read-only dashboard — no sidebar, no other clients, no PAYBACK
 function renderReadOnlyDashboard(c) {
+  // Save overlay elements before replacing body (they'll be destroyed otherwise)
+  const savedOverlays = ['postOverlay','insightDetailModal','insightEditModal'].map(id => document.getElementById(id)).filter(Boolean);
   // Replace ENTIRE body with a clean standalone view
   c.id = '__ro__';
   c._readOnly = true;
@@ -978,6 +980,8 @@ function renderReadOnlyDashboard(c) {
   navHome.id = 'nav-home';
   navHome.style.display = 'none';
   document.body.appendChild(navHome);
+  // Re-attach saved overlays so click functions work
+  savedOverlays.forEach(el => document.body.appendChild(el));
   // Now render the dashboard into the container
   renderDash(document.getElementById('viewContainer'));
 }
