@@ -2732,35 +2732,79 @@ function buildDataInsights(c, ins, p) {
     <div class="strat-rec"><span style="color:#00A86B">→</span> Format von ${labels[bestMonthIdx]} wiederholen und skalieren</div>
   </div>`;
 
-  // ── Kachel 2: Was hat nicht gut funktioniert?
+  // ── Kachel 2: Was hat nicht gut funktioniert & WARUM?
   const worstMonthIdx = impressions.indexOf(Math.min(...impressions.filter(v=>v>0)));
+  const avgImpr = ins.totalImpr / ins.n;
+  const postsPerMonth = monthly.postsPerMonth || [];
+
   // Schwächster Content-Typ
   const worstType = Object.entries(typeImpr).sort((a,b) => a[1].sum/a[1].n - b[1].sum/b[1].n)[0];
-  // Engagement-Schwäche
-  const avgEng = ins.avgEngRate;
-  const lowEngMonths = labels.filter((_,i) => impressions[i]>0 && engagements[i]/impressions[i]*100 < avgEng*0.5);
-  // Flop-Post analyse
-  const worstPost = flops.length ? [...flops].sort((a,b)=>(a.impr||0)-(b.impr||0))[0]
-                  : [...posts].sort((a,b)=>(a.impr||0)-(b.impr||0))[0];
 
-  let card2Body = `📉 Schwächster Monat: <strong>${labels[worstMonthIdx]}</strong> mit nur <strong>${fmt(impressions[worstMonthIdx])} Impressionen</strong> — deutlich unter dem Durchschnitt.`;
-  if (worstType && bestType && worstType[0] !== bestType[0]) {
-    card2Body += `<br><br>⚠️ Schwächster Content-Typ: <strong>${TYPE_LABELS[worstType[0]]||worstType[0]}</strong> mit Ø nur ${fmt(Math.round(worstType[1].sum/worstType[1].n))} Impressionen — weniger davon einsetzen.`;
+  // Warum-Analyse: Posting-Frequenz im schwächsten Monat
+  const worstPosts = postsPerMonth[worstMonthIdx] || 0;
+  const avgPosts   = postsPerMonth.filter(v=>v>0).reduce((s,v,_,a)=>s+v/a.length,0);
+  const freqWhy    = worstPosts > 0 && avgPosts > 0 && worstPosts < avgPosts * 0.6;
+
+  // Engagement-Drop-Monate (Rate unter halben Durchschnitt)
+  const avgEngRate = ins.avgEngRate;
+  const lowEngMonths = labels.filter((_,i) => impressions[i]>0 && engagements[i]/impressions[i]*100 < avgEngRate*0.5);
+
+  // Flop-Post analyse
+  const worstPost = flops.length
+    ? [...flops].sort((a,b)=>(a.impr||0)-(b.impr||0))[0]
+    : [...posts].sort((a,b)=>(a.impr||0)-(b.impr||0))[0];
+  const worstPostType = worstPost?.type;
+
+  // Muster: Wenn Flop-Posts einen dominanten Typ haben
+  const flopTypes = {};
+  flops.forEach(p => { const t=p.type||'story'; flopTypes[t]=(flopTypes[t]||0)+1; });
+  const dominantFlopType = Object.entries(flopTypes).sort((a,b)=>b[1]-a[1])[0];
+
+  // Reichweite vs. Engagement-Mismatch: hohe Impressionen, niedriges Engagement
+  const highImprLowEng = posts.filter(p => p.impr > avgImpr*0.8 && p.eng > 0 && p.eng/p.impr*100 < avgEngRate*0.5);
+
+  // Warum-Punkte bauen
+  const whyPoints = [];
+
+  whyPoints.push(`📉 <strong>${labels[worstMonthIdx]}</strong> war der schwächste Monat mit nur <strong>${fmt(impressions[worstMonthIdx])} Impressionen</strong> (${Math.round(impressions[worstMonthIdx]/avgImpr*100)}% des Ø).`);
+
+  if (freqWhy) {
+    whyPoints.push(`🔴 <strong>Warum:</strong> In ${labels[worstMonthIdx]} wurden nur <strong>${worstPosts} Posts</strong> veröffentlicht — Ø sind ${avgPosts.toFixed(1)}. Weniger Frequenz = weniger Sichtbarkeit im Algorithmus.`);
+  } else if (worstPosts === 0) {
+    whyPoints.push(`🔴 <strong>Warum:</strong> In ${labels[worstMonthIdx]} wurden keine Posts veröffentlicht — der LinkedIn-Algorithmus bestraft Inaktivität mit stark reduzierter Reichweite.`);
   }
+
+  if (dominantFlopType && dominantFlopType[1] >= 2) {
+    whyPoints.push(`⚠️ <strong>Muster in Flop-Posts:</strong> ${dominantFlopType[1]} von ${flops.length} schwachen Posts waren vom Typ <strong>"${TYPE_LABELS[dominantFlopType[0]]||dominantFlopType[0]}"</strong> — dieses Format funktioniert hier nicht.`);
+  } else if (worstType && bestType && worstType[0] !== bestType[0]) {
+    whyPoints.push(`⚠️ <strong>Content-Typ-Schwäche:</strong> <strong>"${TYPE_LABELS[worstType[0]]||worstType[0]}"</strong> erzielt Ø nur ${fmt(Math.round(worstType[1].sum/worstType[1].n))} Impressionen — ${Math.round(worstType[1].sum/worstType[1].n / (bestType[1].sum/bestType[1].n) * 100)}% des stärksten Typs.`);
+  }
+
+  if (highImprLowEng.length > 0) {
+    whyPoints.push(`💬 <strong>Reichweite ohne Reaktion:</strong> ${highImprLowEng.length} Post${highImprLowEng.length>1?'s':''} hatte${highImprLowEng.length>1?'n':''} hohe Impressionen aber kaum Kommentare — fehlende Call-to-Action oder zu wenig persönlicher Bezug.`);
+  } else if (lowEngMonths.length > 0) {
+    whyPoints.push(`💬 <strong>Engagement-Einbruch in ${lowEngMonths.slice(0,2).join(' & ')}:</strong> Interaktionsrate weit unter Ø — Posts hatten vermutlich keinen klaren Diskussionsanreiz.`);
+  }
+
   if (worstPost) {
-    card2Body += `<br><br>📌 Schwächster Post: <em>"${(worstPost.caption||worstPost.label||'').slice(0,70)}…"</em> — nur ${fmt(worstPost.impr||0)} Impressionen.`;
+    whyPoints.push(`📌 <strong>Schwächster Post:</strong> <em>"${(worstPost.caption||worstPost.label||'').slice(0,65)}…"</em> — ${fmt(worstPost.impr||0)} Impressionen${worstPost.eng?', '+worstPost.eng+' Eng.':''}.`);
   }
-  if (lowEngMonths.length > 0) {
-    card2Body += `<br><br>💬 Engagement-Schwäche in: <strong>${lowEngMonths.slice(0,3).join(', ')}</strong> — Interaktionsrate deutlich unter Ø.`;
-  }
+
+  const card2Rec = dominantFlopType && dominantFlopType[1]>=2
+    ? `"${TYPE_LABELS[dominantFlopType[0]]||dominantFlopType[0]}" durch "${TYPE_LABELS[bestType?.[0]]||'persönliche Stories'}" ersetzen`
+    : freqWhy || worstPosts===0
+    ? `Posting-Frequenz konstant halten — auch in ruhigen Monaten mind. 4× / Monat`
+    : highImprLowEng.length > 0
+    ? `Jeden Post mit einer konkreten Frage oder klarem Standpunkt beenden`
+    : `Schwache Content-Typen reduzieren, starke Formate häufiger wiederholen`;
 
   let card2 = `<div class="strat-card">
     <div class="strat-accent" style="background:#E03B3B"></div>
-    <div class="strat-badge" style="background:#FFE8E8;color:#8A0000">⚠️ Was nicht funktioniert</div>
-    <div class="strat-val" style="color:#E03B3B">Schwächster Monat: ${labels[worstMonthIdx]}</div>
+    <div class="strat-badge" style="background:#FFE8E8;color:#8A0000">⚠️ Was nicht funktioniert & warum</div>
+    <div class="strat-val" style="color:#E03B3B">${labels[worstMonthIdx]} · ${Math.round(impressions[worstMonthIdx]/avgImpr*100)}% des Ø</div>
     <div class="strat-title">Diese Muster vermeiden</div>
-    <div class="strat-body" style="font-size:12px;color:var(--muted);line-height:1.6">${card2Body}</div>
-    <div class="strat-rec"><span style="color:#E03B3B">→</span> ${worstType&&bestType&&worstType[0]!==bestType[0]?`Weniger "${TYPE_LABELS[worstType[0]]||worstType[0]}" — mehr "${TYPE_LABELS[bestType[0]]||bestType[0]}"`:lowEngMonths.length>0?'In schwachen Monaten: Posts mit direkter Frage beenden':'Posting-Rhythmus in schwachen Monaten überdenken'}</div>
+    <div class="strat-body" style="font-size:12px;color:var(--muted);line-height:1.7">${whyPoints.join('<br><br>')}</div>
+    <div class="strat-rec"><span style="color:#E03B3B">→</span> ${card2Rec}</div>
   </div>`;
 
   // ── Kachel 3: Beste Posting-Tage
