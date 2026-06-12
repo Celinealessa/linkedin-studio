@@ -2766,7 +2766,7 @@ function buildDataInsights(c, ins, p) {
     const pct = Math.round(t.avgImpr / barMax2 * 100);
     const isTop = i === 0;
     return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
-      <div style="width:110px;font-size:11px;font-weight:${isTop?'700':'400'};color:${isTop?p:'var(--muted)');white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${TYPE_LABELS[t.type]||t.type}</div>
+      <div style="width:110px;font-size:11px;font-weight:${isTop?'700':'400'};color:${isTop?p:'var(--muted)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${TYPE_LABELS[t.type]||t.type}</div>
       <div style="flex:1;background:#F0F1F8;border-radius:999px;height:7px">
         <div style="width:${pct}%;height:100%;background:${isTop?p:p+'66'};border-radius:999px"></div>
       </div>
