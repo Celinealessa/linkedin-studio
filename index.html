@@ -2376,8 +2376,9 @@ function clearAllData() {
 
 // ── Post Overlay Modal
 function openPostOverlay(idx) {
+  try {
   const c = getClient(ROUTE.clientId);
-  if (!c || !c.posts || !c.posts[idx]) return;
+  if (!c || !c.posts || !c.posts[idx]) { showToast('Post nicht gefunden','warn'); return; }
   const post = c.posts[idx];
   const tm = TYPE_META[post.type] || { label: post.type||'Story', bg:'#F1EFEA', col:'#4A4A4A', bar:'#6B7A99' };
   const rc = idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':`#${idx+1}`;
@@ -2417,6 +2418,7 @@ function openPostOverlay(idx) {
     </a>` : ''}`;
 
   document.getElementById('postOverlay').classList.add('open');
+  } catch(e) { console.error('[openPostOverlay]',e); showToast('Fehler: '+e.message,'warn'); }
 }
 function openFlopPostOverlay(idx) {
   const c = getClient(ROUTE.clientId);
@@ -3550,8 +3552,8 @@ function downloadTemplate(type) {
 // ══════════════════════════════════════════
 //  MODAL / TOAST
 // ══════════════════════════════════════════
-function openModal(id)  { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function openModal(id)  { const el = document.getElementById(id); if(el) el.classList.add('open'); else console.warn('Modal not found:',id); }
+function closeModal(id) { const el = document.getElementById(id); if(el) el.classList.remove('open'); }
 document.querySelectorAll('.overlay').forEach(el => el.addEventListener('click', e => { if(e.target===el) el.classList.remove('open'); }));
 
 let _toastTimer;
@@ -3779,35 +3781,33 @@ if (!checkShareParam()) { renderApp(); }
 
 <script>
 function openInsightDetail(idx, cid) {
-  const c = getClient(cid);
-  if (!c) return;
-  const posts = c.posts || [];
-  const flops = c.flopPosts || [];
-  const ov = (c.insightOverrides||[])[idx] || {};
-  const ins = analyze(c.monthly, c.splitLabel, c.ci.primary, posts, flops, c.ci);
-  const TYPE_LABELS = {story:'Story/Persönlich',humor:'Humor',tech:'Tech/Insights',network:'Netzwerk',branch:'Branche',text:'Text-Post',video:'Video',carousel:'Carousel',image:'Bild-Post',poll:'Umfrage'};
+  try {
+    const c = getClient(cid);
+    if (!c) return;
+    const ov = (c.insightOverrides||[])[idx] || {};
+    const auto = (c._insightAuto||[])[idx] || {};
+    const titles = ['✅ Was funktioniert', '🔍 Content-Muster', '📅 Beste Posting-Tage'];
+    const displayVal   = ov.val   || auto.val   || '';
+    const displayTitle = ov.title || auto.title || titles[idx];
+    const displayBody  = ov.body  || auto.body  || '';
+    const displayRec   = ov.rec   || auto.rec   || '';
 
-  const auto = c._insightAuto?.[idx] || {};
-  const titles = ['✅ Was funktioniert', '🔍 Content-Muster', '📅 Beste Posting-Tage'];
-  const displayVal   = ov.val   || auto.val   || '';
-  const displayTitle = ov.title || auto.title || titles[idx];
-  const displayBody  = ov.body  || auto.body  || '';
-  const displayRec   = ov.rec   || auto.rec   || '';
+    document.getElementById('insightDetailTitle').textContent = displayTitle;
 
-  document.getElementById('insightDetailTitle').textContent = displayTitle;
+    const cardHtml = `
+      <div style="background:#F4F5FF;border:1px solid #C7CAFF;border-radius:12px;padding:18px 20px">
+        ${displayVal ? `<div style="font-size:26px;font-weight:800;color:#5B63FE;margin-bottom:6px">${displayVal}</div>` : ''}
+        ${displayBody ? `<div style="font-size:14px;line-height:1.7;color:var(--text);margin-bottom:${displayRec?'12px':'0'}">${displayBody}</div>` : ''}
+        ${displayRec ? `<div style="font-size:13px;color:#5B63FE;font-weight:600;border-top:1px solid #C7CAFF;padding-top:10px;margin-top:4px">→ ${displayRec}</div>` : ''}
+      </div>`;
 
-  // Kachel-Inhalt in groß
-  const cardHtml = `
-    <div style="background:#F4F5FF;border:1px solid #C7CAFF;border-radius:12px;padding:18px 20px;margin-bottom:20px">
-      ${displayVal ? `<div style="font-size:26px;font-weight:800;color:#5B63FE;margin-bottom:6px">${displayVal}</div>` : ''}
-      ${displayBody ? `<div style="font-size:14px;line-height:1.7;color:var(--text);margin-bottom:${displayRec?'12px':'0'}">${displayBody}</div>` : ''}
-      ${displayRec ? `<div style="font-size:13px;color:#5B63FE;font-weight:600;border-top:1px solid #C7CAFF;padding-top:10px;margin-top:4px">→ ${displayRec}</div>` : ''}
-    </div>`;
-
-  document.getElementById('insightDetailBody').innerHTML = cardHtml;
-
-  document.getElementById('insightDetailEditBtn').onclick = () => { closeModal('insightDetailModal'); editInsight(idx, cid); };
-  openModal('insightDetailModal');
+    document.getElementById('insightDetailBody').innerHTML = cardHtml;
+    document.getElementById('insightDetailEditBtn').onclick = () => { closeModal('insightDetailModal'); editInsight(idx, cid); };
+    openModal('insightDetailModal');
+  } catch(e) {
+    console.error('[openInsightDetail]', e);
+    showToast('Fehler beim Öffnen der Kachel: ' + e.message, 'warn');
+  }
 }
 
 function editInsight(idx, cid) {
