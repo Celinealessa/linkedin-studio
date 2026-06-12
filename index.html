@@ -3782,25 +3782,32 @@ function openInsightDetail(idx, cid) {
 
   const postsHtml = relevantPosts.length ? `
     <div style="margin-top:16px">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px">Beiträge</div>
-      ${relevantPosts.map(p => `
-        <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:13px;line-height:1.5;margin-bottom:4px">${(p.caption||p.label||'(kein Text)').slice(0,120)}${(p.caption||p.label||'').length>120?'…':''}</div>
-            <div style="display:flex;gap:10px;font-size:11px;color:var(--muted);flex-wrap:wrap">
-              ${p.label?`<span>📅 ${p.label}</span>`:''}
-              <span>👁 ${fmt(p.impr||0)}</span>
-              ${p.eng?`<span>💬 ${p.eng}</span>`:''}
-              <span style="background:#F0F1F8;padding:1px 6px;border-radius:10px">${TYPE_LABELS[p.type]||p.type||'—'}</span>
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px">📋 Beiträge</div>
+      ${relevantPosts.map((p,i) => {
+        const fullText = p.caption || p.label || '';
+        const typeLabel = TYPE_LABELS[p.type]||p.type||'—';
+        const rank = idx===0 ? `<span style="background:#FFD700;color:#7A4500;border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex-shrink:0">${i+1}</span>` : '';
+        return `<div style="background:#F8F9FF;border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              ${rank}
+              ${p.label?`<span style="font-size:11px;color:var(--muted)">📅 ${p.label}</span>`:''}
+              <span style="background:#E8EDFF;color:#3B3FCC;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${typeLabel}</span>
             </div>
+            ${p.url?`<a href="${p.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="flex-shrink:0;background:#0A66C2;color:#fff;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;display:flex;align-items:center;gap:5px">↗ LinkedIn</a>`:''}
           </div>
-          ${p.url?`<a href="${p.url}" target="_blank" rel="noopener" style="flex-shrink:0;background:#0A66C2;color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;text-decoration:none;white-space:nowrap" onclick="event.stopPropagation()">↗ LinkedIn</a>`:''}
-        </div>`).join('')}
-    </div>` : '';
+          ${fullText ? `<div style="font-size:13px;line-height:1.65;color:var(--text);margin-bottom:10px;white-space:pre-wrap">${fullText.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>` : ''}
+          <div style="display:flex;gap:14px;font-size:12px;font-weight:600;color:var(--muted)">
+            <span>👁 <strong style="color:var(--text)">${fmt(p.impr||0)}</strong> Impr.</span>
+            ${p.eng?`<span>💬 <strong style="color:var(--text)">${p.eng}</strong> Eng.</span>`:''}
+            ${p.likes?`<span>👍 <strong style="color:var(--text)">${p.likes}</strong></span>`:''}
+            ${p.comments?`<span>💭 <strong style="color:var(--text)">${p.comments}</strong></span>`:''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>` : '<div style="color:var(--muted);font-style:italic;margin-top:12px">Keine Post-Daten verfügbar.</div>';
 
-  document.getElementById('insightDetailBody').innerHTML = `
-    <div style="font-size:13px;line-height:1.7;color:var(--muted)">${ov.body || '(auto-generiert aus Daten)'}</div>
-    ${postsHtml}`;
+  document.getElementById('insightDetailBody').innerHTML = postsHtml;
 
   document.getElementById('insightDetailEditBtn').onclick = () => { closeModal('insightDetailModal'); editInsight(idx, cid); };
   openModal('insightDetailModal');
