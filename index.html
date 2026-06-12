@@ -3779,8 +3779,22 @@ function openInsightDetail(idx, cid) {
   const ins = analyze(c.monthly, c.splitLabel, c.ci.primary, posts, flops, c.ci);
   const TYPE_LABELS = {story:'Story/Persönlich',humor:'Humor',tech:'Tech/Insights',network:'Netzwerk',branch:'Branche',text:'Text-Post',video:'Video',carousel:'Carousel',image:'Bild-Post',poll:'Umfrage'};
 
+  const auto = c._insightAuto?.[idx] || {};
   const titles = ['✅ Was funktioniert', '🔍 Content-Muster', '📅 Beste Posting-Tage'];
-  document.getElementById('insightDetailTitle').textContent = ov.title || titles[idx];
+  const displayVal   = ov.val   || auto.val   || '';
+  const displayTitle = ov.title || auto.title || titles[idx];
+  const displayBody  = ov.body  || auto.body  || '';
+  const displayRec   = ov.rec   || auto.rec   || '';
+
+  document.getElementById('insightDetailTitle').textContent = displayTitle;
+
+  // Kachel-Inhalt in groß
+  const cardHtml = `
+    <div style="background:#F4F5FF;border:1px solid #C7CAFF;border-radius:12px;padding:18px 20px;margin-bottom:20px">
+      ${displayVal ? `<div style="font-size:26px;font-weight:800;color:#5B63FE;margin-bottom:6px">${displayVal}</div>` : ''}
+      ${displayBody ? `<div style="font-size:14px;line-height:1.7;color:var(--text);margin-bottom:${displayRec?'12px':'0'}">${displayBody}</div>` : ''}
+      ${displayRec ? `<div style="font-size:13px;color:#5B63FE;font-weight:600;border-top:1px solid #C7CAFF;padding-top:10px;margin-top:4px">→ ${displayRec}</div>` : ''}
+    </div>`;
 
   // Posts für jeweilige Kachel
   let relevantPosts = [];
@@ -3789,7 +3803,7 @@ function openInsightDetail(idx, cid) {
   else relevantPosts = [...posts].sort((a,b)=>(b.impr||0)-(a.impr||0));
 
   const postsHtml = relevantPosts.length ? `
-    <div style="margin-top:16px">
+    <div style="margin-top:4px">
       <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px">📋 Beiträge</div>
       ${relevantPosts.map((p,i) => {
         const fullText = p.caption || p.label || '';
@@ -3813,9 +3827,9 @@ function openInsightDetail(idx, cid) {
           </div>
         </div>`;
       }).join('')}
-    </div>` : '<div style="color:var(--muted);font-style:italic;margin-top:12px">Keine Post-Daten verfügbar.</div>';
+    </div>` : '';
 
-  document.getElementById('insightDetailBody').innerHTML = postsHtml;
+  document.getElementById('insightDetailBody').innerHTML = cardHtml + postsHtml;
 
   document.getElementById('insightDetailEditBtn').onclick = () => { closeModal('insightDetailModal'); editInsight(idx, cid); };
   openModal('insightDetailModal');
