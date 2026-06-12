@@ -2719,18 +2719,40 @@ function buildDataInsights(c, ins, p) {
   const bestType = Object.entries(typeImpr).sort((a,b) => b[1].sum/b[1].n - a[1].sum/a[1].n)[0];
   const TYPE_LABELS = {story:'Story/Persönlich',humor:'Humor',tech:'Tech/Insights',network:'Netzwerk',branch:'Branche',text:'Text-Post',video:'Video',carousel:'Carousel',image:'Bild-Post',poll:'Umfrage'};
 
-  let card1 = `<div class="strat-card">
-    <div class="strat-accent" style="background:#00A86B"></div>
-    <div class="strat-badge" style="background:#E8F8F2;color:#00624A">✅ Was funktioniert</div>
-    <div class="strat-val" style="color:#00A86B">Bester Monat: ${labels[bestMonthIdx]}</div>
-    <div class="strat-title">Das läuft am besten</div>
-    <div class="strat-body" style="font-size:12px;color:var(--muted);line-height:1.6">
-      📅 <strong>${labels[bestMonthIdx]}</strong> war der stärkste Monat mit <strong>${fmt(impressions[bestMonthIdx])} Impressionen</strong>${engagements[bestMonthIdx]?' und '+fmt(engagements[bestMonthIdx])+' Engagements':''}.
-      ${topPost ? `<br><br>🏆 Top-Post: <em>"${(topPost.caption||topPost.label||'').slice(0,80)}…"</em> — <strong>${fmt(topPost.impr)} Impressionen</strong>${topPost.eng?' · '+fmt(topPost.eng)+' Engagements':''}.` : ''}
-      ${bestType ? `<br><br>🎨 Stärkster Content-Typ: <strong>${TYPE_LABELS[bestType[0]]||bestType[0]}</strong> mit Ø ${fmt(Math.round(bestType[1].sum/bestType[1].n))} Impressionen pro Post.` : ''}
-    </div>
-    <div class="strat-rec"><span style="color:#00A86B">→</span> Format von ${labels[bestMonthIdx]} wiederholen und skalieren</div>
-  </div>`;
+  // Helper: Insight-Kachel mit Edit + Detail Buttons
+  const cid = c.id;
+  const ov = c.insightOverrides || [{},{},{}];
+  function insightCard(idx, accentColor, badgeBg, badgeCol, badgeText, val, title, body, rec, detailPosts) {
+    const o = ov[idx] || {};
+    const displayVal   = o.val   || val;
+    const displayTitle = o.title || title;
+    const displayBody  = o.body  || body;
+    const displayRec   = o.rec   || rec;
+    // Detail-Posts als JSON für Modal
+    const detailJson = encodeURIComponent(JSON.stringify(detailPosts||[]));
+    return `<div class="strat-card" style="cursor:pointer" onclick="openInsightDetail(${idx},'${cid}')">
+      <div class="strat-accent" style="background:${accentColor}"></div>
+      <button class="strat-edit-btn" onclick="event.stopPropagation();editInsight(${idx},'${cid}')" style="opacity:1;right:44px">✏️</button>
+      <button class="strat-edit-btn" onclick="event.stopPropagation();openInsightDetail(${idx},'${cid}')" style="opacity:1;right:8px;background:#F4F5FF;color:#5B63FE;border-color:#C7CAFF">↗</button>
+      <div class="strat-badge" style="background:${badgeBg};color:${badgeCol}">${badgeText}</div>
+      <div class="strat-val" style="color:${accentColor}">${displayVal}</div>
+      <div class="strat-title">${displayTitle}</div>
+      <div class="strat-body" style="font-size:12px;color:var(--muted);line-height:1.6">${displayBody}</div>
+      <div class="strat-rec"><span style="color:${accentColor}">→</span> ${displayRec}</div>
+    </div>`;
+  }
+
+  // Top-Posts für Detail-Modal aufbereiten
+  const topPostsForDetail = [...posts].sort((a,b)=>(b.impr||0)-(a.impr||0)).slice(0,8);
+
+  let card1 = insightCard(0,
+    '#00A86B', '#E8F8F2', '#00624A', '✅ Was funktioniert',
+    `Bester Monat: ${labels[bestMonthIdx]}`,
+    'Das läuft am besten',
+    `📅 <strong>${labels[bestMonthIdx]}</strong> war der stärkste Monat mit <strong>${fmt(impressions[bestMonthIdx])} Impressionen</strong>${engagements[bestMonthIdx]?' und '+fmt(engagements[bestMonthIdx])+' Engagements':''}.${topPost?`<br><br>🏆 Top-Post: <em>"${(topPost.caption||topPost.label||'').slice(0,80)}…"</em> — <strong>${fmt(topPost.impr)} Impressionen</strong>.`:''}${bestType?`<br><br>🎨 Stärkster Typ: <strong>${TYPE_LABELS[bestType[0]]||bestType[0]}</strong> · Ø ${fmt(Math.round(bestType[1].sum/bestType[1].n))} Impr.`:''}`,
+    `Format von ${labels[bestMonthIdx]} wiederholen und skalieren`,
+    topPostsForDetail
+  );
 
   // ── Kachel 2: Welches Content-Muster performt am besten?
   const avgImpr = ins.totalImpr / ins.n;
@@ -2781,20 +2803,17 @@ function buildDataInsights(c, ins, p) {
     ? `💬 Höchste Engagement-Rate: <strong>"${(engWinner.caption||engWinner.label||'').slice(0,55)}…"</strong> — ${(engWinner.eng/engWinner.impr*100).toFixed(1)}% Rate.`
     : '';
 
-  let card2 = `<div class="strat-card">
-    <div class="strat-accent" style="background:${p}"></div>
-    <div class="strat-badge" style="background:${p}22;color:${p}">🔍 Content-Muster</div>
-    <div class="strat-val" style="color:${p}">${topTypes[0] ? (TYPE_LABELS[topTypes[0].type]||topTypes[0].type) : '—'} performt am stärksten</div>
-    <div class="strat-title">Welches Format funktioniert?</div>
-    <div class="strat-body" style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:10px">
-      Ø Impressionen nach Content-Typ (${allPostsSorted.length} Posts ausgewertet):
-    </div>
-    ${barsHtml2}
-    <div class="strat-body" style="font-size:12px;color:var(--muted);line-height:1.6;margin-top:10px">
-      ${card2PatternNote}${card2EngNote ? '<br><br>'+card2EngNote : ''}
-    </div>
-    <div class="strat-rec"><span style="color:${p}">→</span> ${topTypes[0] ? `"${TYPE_LABELS[topTypes[0].type]||topTypes[0].type}"-Posts häufiger einsetzen — Ø ${fmtK(Math.round(topTypes[0].avgImpr))} Impressionen pro Post` : 'Content-Typen in Posts erfassen für bessere Auswertung'}</div>
-  </div>`;
+  const card2Body = `Ø Impressionen nach Content-Typ (${allPostsSorted.length} Posts):<br><br>${barsHtml2}${card2PatternNote?'<br>'+card2PatternNote:''}${card2EngNote?'<br><br>'+card2EngNote:''}`;
+  const card2PostsDetail = allPostsSorted.sort((a,b)=>(b.impr||0)-(a.impr||0)).slice(0,10);
+
+  let card2 = insightCard(1,
+    p, p+'22', p, '🔍 Content-Muster',
+    `${topTypes[0] ? (TYPE_LABELS[topTypes[0].type]||topTypes[0].type) : '—'} performt am stärksten`,
+    'Welches Format funktioniert?',
+    card2Body,
+    topTypes[0] ? `"${TYPE_LABELS[topTypes[0].type]||topTypes[0].type}"-Posts häufiger einsetzen — Ø ${fmtK(Math.round(topTypes[0].avgImpr))} Impressionen` : 'Content-Typen in Posts erfassen',
+    card2PostsDetail
+  );
 
   // ── Kachel 3: Beste Posting-Tage
   const dayStats = {}; // {Mo: {sum:0, n:0}}
@@ -2813,12 +2832,10 @@ function buildDataInsights(c, ins, p) {
     }
   });
 
-  let card3;
+  let card3Body, card3Val, card3Rec;
   if (hasDayData && Object.keys(dayStats).length >= 2) {
     const sorted = Object.entries(dayStats).sort((a,b) => b[1].sum/b[1].n - a[1].sum/a[1].n);
-    const best = sorted[0], second = sorted[1];
-    const worst = sorted[sorted.length-1];
-    const dayOrder = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+    const best = sorted[0], second = sorted[1], worst = sorted[sorted.length-1];
     const barMax = best[1].sum/best[1].n;
     const barsHtml = sorted.map(([day,s]) => {
       const pct = Math.round(s.sum/s.n/barMax*100);
@@ -2831,42 +2848,20 @@ function buildDataInsights(c, ins, p) {
         <div style="width:60px;font-size:11px;text-align:right;color:${isTop?p:'var(--muted)'}">${fmtK(Math.round(s.sum/s.n))} Ø</div>
       </div>`;
     }).join('');
-
-    card3 = `<div class="strat-card">
-      <div class="strat-accent" style="background:${p}"></div>
-      <div class="strat-badge" style="background:${p}22;color:${p}">📅 Beste Posting-Tage</div>
-      <div class="strat-val" style="color:${p}">${best[0]}${second?` & ${second[0]}`:''}</div>
-      <div class="strat-title">Wann du posten solltest</div>
-      <div class="strat-body" style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:10px">
-        Auswertung aus ${posts.length} Posts mit exaktem Datum:
-      </div>
-      ${barsHtml}
-      <div class="strat-rec" style="margin-top:8px"><span style="color:${p}">→</span> ${best[0]}${second?' und '+second[0]:''} für maximale Reichweite einplanen${worst?' · '+worst[0]+' meiden':''}</div>
-    </div>`;
+    card3Val = `${best[0]}${second?` & ${second[0]}`:''}`;
+    card3Body = `Auswertung aus ${posts.length} Posts mit exaktem Datum:<br><br>${barsHtml}`;
+    card3Rec  = `${best[0]}${second?' und '+second[0]:''} einplanen${worst?' · '+worst[0]+' meiden':''}`;
   } else {
-    // Kein exaktes Datum → Monatsmuster zeigen
-    const monthlyPeak = labels[bestMonthIdx];
-    const peakMonth = monthlyPeak ? new Date(impressions.reduce((bi,v,i,a)=>v>a[bi]?i:bi,0)*0+
-      (() => { const d = parseDate(labels[bestMonthIdx]); return d ? new Date(d.year,d.month,1).getMonth() : -1; })()) : null;
-    const bestWeekday = ['Mo','Di','Mi','Do','Fr'].includes('Di') ? 'Di' : 'Mi';
-
-    card3 = `<div class="strat-card">
-      <div class="strat-accent" style="background:${p}"></div>
-      <div class="strat-badge" style="background:${p}22;color:${p}">📅 Beste Posting-Tage</div>
-      <div class="strat-val" style="color:${p}">Di, Mi & Do</div>
-      <div class="strat-title">Optimale Posting-Zeiten</div>
-      <div class="strat-body" style="font-size:12px;color:var(--muted);line-height:1.6">
-        Für eine genaue Tages-Auswertung werden exakte Post-Daten benötigt. Nach LinkedIn-Benchmark performen B2B-Posts am stärksten:
-        <br><br>
-        🥇 <strong>Dienstag & Mittwoch</strong> — höchste organische Reichweite<br>
-        🥈 <strong>Donnerstag</strong> — starke Engagement-Rate<br>
-        ❌ <strong>Wochenende</strong> — deutlich geringere Sichtbarkeit
-        <br><br>
-        Beste Uhrzeit: <strong>7–9 Uhr</strong> oder <strong>17–19 Uhr</strong>
-      </div>
-      <div class="strat-rec"><span style="color:${p}">→</span> Di–Do zwischen 7–9 Uhr posten für maximale Reichweite</div>
-    </div>`;
+    card3Val  = 'Di, Mi & Do';
+    card3Body = `Für genaue Auswertung exakte Datumsangaben in den Posts hinterlegen. LinkedIn-Benchmark:<br><br>🥇 <strong>Dienstag & Mittwoch</strong> — höchste organische Reichweite<br>🥈 <strong>Donnerstag</strong> — starke Engagement-Rate<br>❌ <strong>Wochenende</strong> — deutlich geringere Sichtbarkeit<br><br>Beste Uhrzeit: <strong>7–9 Uhr</strong> oder <strong>17–19 Uhr</strong>`;
+    card3Rec  = 'Di–Do zwischen 7–9 Uhr posten für maximale Reichweite';
   }
+
+  let card3 = insightCard(2,
+    p, p+'22', p, '📅 Beste Posting-Tage',
+    card3Val, 'Wann du posten solltest', card3Body, card3Rec,
+    [...posts].sort((a,b)=>(b.impr||0)-(a.impr||0)).slice(0,6)
+  );
 
   return card1 + card2 + card3;
 }
@@ -3731,5 +3726,129 @@ if (!checkShareParam()) { renderApp(); }
     </div>
   </div>
 </div>
+<!-- Insight Detail Modal -->
+<div class="overlay" id="insightDetailModal">
+  <div class="modal" style="max-width:600px;max-height:85vh;display:flex;flex-direction:column">
+    <div class="modal-h">
+      <h3 id="insightDetailTitle">Details</h3>
+      <button class="modal-x" onclick="closeModal('insightDetailModal')">✕</button>
+    </div>
+    <div class="modal-b" id="insightDetailBody" style="overflow-y:auto;flex:1"></div>
+    <div class="modal-f">
+      <button class="btn" onclick="closeModal('insightDetailModal')">Schließen</button>
+      <button class="btn btn-primary" id="insightDetailEditBtn" onclick="">✏️ Bearbeiten</button>
+    </div>
+  </div>
+</div>
+
+<!-- Insight Edit Modal -->
+<div class="overlay" id="insightEditModal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-h"><h3>✏️ Kachel bearbeiten</h3><button class="modal-x" onclick="closeModal('insightEditModal')">✕</button></div>
+    <div class="modal-b" style="display:flex;flex-direction:column;gap:12px">
+      <input type="hidden" id="insightEditIdx">
+      <input type="hidden" id="insightEditCid">
+      <div class="form-group" style="margin:0"><label class="form-label">📊 Kennzahl / Überschrift</label><input class="form-input" id="insight_val"></div>
+      <div class="form-group" style="margin:0"><label class="form-label">📌 Titel</label><input class="form-input" id="insight_title"></div>
+      <div class="form-group" style="margin:0"><label class="form-label">📝 Beschreibung</label><textarea class="form-input" id="insight_body" rows="5" style="resize:vertical;line-height:1.6"></textarea></div>
+      <div class="form-group" style="margin:0"><label class="form-label">→ Empfehlung / Maßnahme</label><input class="form-input" id="insight_rec"></div>
+    </div>
+    <div class="modal-f">
+      <button class="btn" onclick="closeModal('insightEditModal')">Abbrechen</button>
+      <button class="btn" style="color:#E03B3B;border-color:#E03B3B" onclick="resetInsight()">↺ Auto-Daten</button>
+      <button class="btn btn-primary" onclick="saveInsight()">💾 Speichern</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function openInsightDetail(idx, cid) {
+  const c = getClient(cid);
+  if (!c) return;
+  const posts = c.posts || [];
+  const flops = c.flopPosts || [];
+  const ov = (c.insightOverrides||[])[idx] || {};
+  const ins = analyze(c.monthly, c.splitLabel, c.ci.primary, posts, flops, c.ci);
+  const TYPE_LABELS = {story:'Story/Persönlich',humor:'Humor',tech:'Tech/Insights',network:'Netzwerk',branch:'Branche',text:'Text-Post',video:'Video',carousel:'Carousel',image:'Bild-Post',poll:'Umfrage'};
+
+  const titles = ['✅ Was funktioniert', '🔍 Content-Muster', '📅 Beste Posting-Tage'];
+  document.getElementById('insightDetailTitle').textContent = ov.title || titles[idx];
+
+  // Posts für jeweilige Kachel
+  let relevantPosts = [];
+  if (idx === 0) relevantPosts = [...posts].sort((a,b)=>(b.impr||0)-(a.impr||0));
+  else if (idx === 1) relevantPosts = [...posts,...flops].sort((a,b)=>(b.impr||0)-(a.impr||0));
+  else relevantPosts = [...posts].sort((a,b)=>(b.impr||0)-(a.impr||0));
+
+  const postsHtml = relevantPosts.length ? `
+    <div style="margin-top:16px">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px">Beiträge</div>
+      ${relevantPosts.map(p => `
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;line-height:1.5;margin-bottom:4px">${(p.caption||p.label||'(kein Text)').slice(0,120)}${(p.caption||p.label||'').length>120?'…':''}</div>
+            <div style="display:flex;gap:10px;font-size:11px;color:var(--muted);flex-wrap:wrap">
+              ${p.label?`<span>📅 ${p.label}</span>`:''}
+              <span>👁 ${fmt(p.impr||0)}</span>
+              ${p.eng?`<span>💬 ${p.eng}</span>`:''}
+              <span style="background:#F0F1F8;padding:1px 6px;border-radius:10px">${TYPE_LABELS[p.type]||p.type||'—'}</span>
+            </div>
+          </div>
+          ${p.url?`<a href="${p.url}" target="_blank" rel="noopener" style="flex-shrink:0;background:#0A66C2;color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;text-decoration:none;white-space:nowrap" onclick="event.stopPropagation()">↗ LinkedIn</a>`:''}
+        </div>`).join('')}
+    </div>` : '';
+
+  document.getElementById('insightDetailBody').innerHTML = `
+    <div style="font-size:13px;line-height:1.7;color:var(--muted)">${ov.body || '(auto-generiert aus Daten)'}</div>
+    ${postsHtml}`;
+
+  document.getElementById('insightDetailEditBtn').onclick = () => { closeModal('insightDetailModal'); editInsight(idx, cid); };
+  openModal('insightDetailModal');
+}
+
+function editInsight(idx, cid) {
+  const c = getClient(cid);
+  if (!c) return;
+  const ov = (c.insightOverrides||[])[idx] || {};
+  document.getElementById('insightEditIdx').value = idx;
+  document.getElementById('insightEditCid').value = cid;
+  document.getElementById('insight_val').value   = ov.val   || '';
+  document.getElementById('insight_title').value = ov.title || '';
+  document.getElementById('insight_body').value  = ov.body  || '';
+  document.getElementById('insight_rec').value   = ov.rec   || '';
+  openModal('insightEditModal');
+}
+
+function saveInsight() {
+  const idx = parseInt(document.getElementById('insightEditIdx').value);
+  const cid = document.getElementById('insightEditCid').value;
+  const c = getClient(cid);
+  if (!c) return;
+  if (!c.insightOverrides) c.insightOverrides = [{},{},{}];
+  c.insightOverrides[idx] = {
+    val:   document.getElementById('insight_val').value.trim(),
+    title: document.getElementById('insight_title').value.trim(),
+    body:  document.getElementById('insight_body').value.trim(),
+    rec:   document.getElementById('insight_rec').value.trim()
+  };
+  saveApp();
+  closeModal('insightEditModal');
+  renderApp();
+  showToast('Kachel gespeichert', 'ok');
+}
+
+function resetInsight() {
+  const idx = parseInt(document.getElementById('insightEditIdx').value);
+  const cid = document.getElementById('insightEditCid').value;
+  const c = getClient(cid);
+  if (!c) return;
+  if (!c.insightOverrides) c.insightOverrides = [{},{},{}];
+  c.insightOverrides[idx] = {};
+  saveApp();
+  closeModal('insightEditModal');
+  renderApp();
+  showToast('Auto-Daten wiederhergestellt', 'ok');
+}
+</script>
 </body>
 </html>
