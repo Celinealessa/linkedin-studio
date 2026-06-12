@@ -430,7 +430,7 @@ body {
 
 /* Posts */
 .posts-list { display:flex; flex-direction:column; gap:7px; }
-.post-row { display:grid; grid-template-columns:28px 1fr auto auto; gap:10px; align-items:center; padding:9px 12px; background:var(--bg); border-radius:var(--radius-sm); border:1px solid transparent; transition:all 0.15s; }
+.post-row { display:grid; grid-template-columns:28px 1fr auto auto auto; gap:10px; align-items:center; padding:9px 12px; background:var(--bg); border-radius:var(--radius-sm); border:1px solid transparent; transition:all 0.15s; }
 .post-row:hover { background:#EEF1FF; border-color:#C5C9F8; }
 .post-rank { font-size:12px; font-weight:600; color:var(--muted); font-family:'DM Mono',monospace; text-align:center; }
 .post-rank.g{color:#C89500;} .post-rank.s{color:#7A8BA0;} .post-rank.b{color:#A0674A;}
@@ -574,7 +574,7 @@ body {
   .chart-2, .chart-3, .insight-grid { grid-template-columns: 1fr; }
   .split { grid-template-columns: 1fr; }
   .split-div { height: 32px; width: auto; }
-  .post-row { grid-template-columns: 28px 1fr auto; }
+  .post-row { grid-template-columns: 28px 1fr auto auto; }
   .post-pill { display: none; }
   .clients-grid { grid-template-columns: 1fr; }
 }
@@ -3175,8 +3175,9 @@ function buildDashHTML(c, ins) {
         if (post.eng && !post.likes) metaParts.push('⚡ '+post.eng.toLocaleString('de-DE')+' Engagements');
         topPostsHTML += `<div class="post-row" onclick="openPostOverlay(${i})" style="cursor:pointer" title="Details anzeigen">
           <div class="post-rank ${rc}">#${i+1}</div>
-          <div style="flex:1;min-width:0"><div class="post-cap">${post.caption||'—'}${post.url?' 🔗':''}</div><div class="post-meta">${metaParts.join(' · ')}</div></div>
+          <div style="flex:1;min-width:0"><div class="post-cap">${post.caption||'—'}</div><div class="post-meta">${metaParts.join(' · ')}</div></div>
           <div class="post-pill" style="background:${tm.bg};color:${tm.col}">${tm.label}</div>
+          ${post.url?`<a href="${post.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="flex-shrink:0;background:#0A66C2;color:#fff;padding:5px 12px;border-radius:7px;font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap" title="Auf LinkedIn öffnen">↗ LinkedIn</a>`:'<div></div>'}
           <div class="post-impr" style="color:${p}">${fmt(post.impr)}<div style="font-size:9px;color:var(--muted);font-weight:400">Impressionen</div></div>
         </div>`;
       });
@@ -3199,8 +3200,9 @@ function buildDashHTML(c, ins) {
         if (post.eng && !post.likes) metaParts.push('⚡ '+post.eng.toLocaleString('de-DE')+' Engagements');
         flopPostsHTML += `<div class="post-row" onclick="openFlopPostOverlay(${i})" style="cursor:pointer;opacity:0.85" title="Details anzeigen">
           <div class="post-rank" style="background:#FFF0F0;color:#C0392B;border-color:#F5C6CB">#${i+1}</div>
-          <div style="flex:1;min-width:0"><div class="post-cap">${post.caption||'—'}${post.url?' 🔗':''}</div><div class="post-meta">${metaParts.join(' · ')}</div></div>
+          <div style="flex:1;min-width:0"><div class="post-cap">${post.caption||'—'}</div><div class="post-meta">${metaParts.join(' · ')}</div></div>
           <div class="post-pill" style="background:${tm.bg};color:${tm.col}">${tm.label}</div>
+          ${post.url?`<a href="${post.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="flex-shrink:0;background:#0A66C2;color:#fff;padding:5px 12px;border-radius:7px;font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap" title="Auf LinkedIn öffnen">↗ LinkedIn</a>`:'<div></div>'}
           <div class="post-impr" style="color:#C0392B">${fmt(post.impr)}<div style="font-size:9px;color:var(--muted);font-weight:400">Impressionen</div></div>
         </div>`;
       });
