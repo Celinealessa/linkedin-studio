@@ -1686,7 +1686,7 @@ function parseDate(val) {
   // Excel serial (number stored as number by XLSX)
   if (typeof val === 'number' && val > 40000 && val < 60000) {
     const d = new Date((val - 25569) * 86400 * 1000);
-    return { year: d.getUTCFullYear(), month: d.getUTCMonth() };
+    return { year: d.getUTCFullYear(), month: d.getUTCMonth(), day: d.getUTCDate() };
   }
 
   const s = String(val).trim().replace(/​/g,''); // strip zero-width spaces
@@ -1708,18 +1708,18 @@ function parseDate(val) {
   // Excel serial string "45678"
   if (/^\d{5}$/.test(s)) {
     const d = new Date((+s - 25569) * 86400 * 1000);
-    return { year: d.getUTCFullYear(), month: d.getUTCMonth() };
+    return { year: d.getUTCFullYear(), month: d.getUTCMonth(), day: d.getUTCDate() };
   }
   // ISO: 2025-01-15 or 2025-01
-  const iso = s.match(/^(\d{4})-(\d{2})(?:-\d{2})?/);
-  if (iso) return { year:+iso[1], month:+iso[2]-1 };
+  const iso = s.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?/);
+  if (iso) return { year:+iso[1], month:+iso[2]-1, day: iso[3]?+iso[3]:null };
   // German full: 15.01.2025 or 15. 01. 2025
   const de = s.match(/^(\d{1,2})[\.\s]+(\d{1,2})[\.\s]+(\d{4})/);
-  if (de) return { year:+de[3], month:+de[2]-1 };
+  if (de) return { year:+de[3], month:+de[2]-1, day:+de[1] };
 
   // LinkedIn DE: "15. Jan. 2025" or "15. Januar 2025"
   const liDE = s.match(/^(\d{1,2})\.\s*([A-Za-zÄäÖöÜüß\.]+)\s+(\d{4})/);
-  if (liDE) { const mi = miFromStr(liDE[2]); if(mi>=0) return {year:+liDE[3], month:mi}; }
+  if (liDE) { const mi = miFromStr(liDE[2]); if(mi>=0) return {year:+liDE[3], month:mi, day:+liDE[1]}; }
 
   // LinkedIn DE monthly: "Jan. 2025" or "Januar 2025"
   const liMon = s.match(/^([A-Za-zÄäÖöÜüß]+)\.?\s+(\d{4})/);
@@ -2696,6 +2696,148 @@ function savePostsAndDash() {
 // ══════════════════════════════════════════
 const CHARTS = {};
 
+// ── Daten-Insights: 3 Kacheln aus echten Daten
+function buildDataInsights(c, ins, p) {
+  const posts    = c.posts    || [];
+  const flops    = c.flopPosts || [];
+  const monthly  = c.monthly;
+  const labels   = monthly.labels;
+  const impressions = monthly.impressions;
+  const engagements = monthly.engagements;
+  const DAYS = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+
+  // ── Kachel 1: Was hat am besten funktioniert?
+  const topPost = [...posts].sort((a,b) => (b.impr||0)-(a.impr||0))[0];
+  const bestMonthIdx = impressions.indexOf(Math.max(...impressions));
+  // Bester Content-Typ nach Ø Impressionen
+  const typeImpr = {};
+  posts.forEach(p => {
+    const t = p.type || 'story';
+    if (!typeImpr[t]) typeImpr[t] = {sum:0,n:0};
+    typeImpr[t].sum += p.impr||0; typeImpr[t].n++;
+  });
+  const bestType = Object.entries(typeImpr).sort((a,b) => b[1].sum/b[1].n - a[1].sum/a[1].n)[0];
+  const TYPE_LABELS = {story:'Story/Persönlich',humor:'Humor',tech:'Tech/Insights',network:'Netzwerk',branch:'Branche',text:'Text-Post',video:'Video',carousel:'Carousel',image:'Bild-Post',poll:'Umfrage'};
+
+  let card1 = `<div class="strat-card">
+    <div class="strat-accent" style="background:#00A86B"></div>
+    <div class="strat-badge" style="background:#E8F8F2;color:#00624A">✅ Was funktioniert</div>
+    <div class="strat-val" style="color:#00A86B">Bester Monat: ${labels[bestMonthIdx]}</div>
+    <div class="strat-title">Das läuft am besten</div>
+    <div class="strat-body" style="font-size:12px;color:var(--muted);line-height:1.6">
+      📅 <strong>${labels[bestMonthIdx]}</strong> war der stärkste Monat mit <strong>${fmt(impressions[bestMonthIdx])} Impressionen</strong>${engagements[bestMonthIdx]?' und '+fmt(engagements[bestMonthIdx])+' Engagements':''}.
+      ${topPost ? `<br><br>🏆 Top-Post: <em>"${(topPost.caption||topPost.label||'').slice(0,80)}…"</em> — <strong>${fmt(topPost.impr)} Impressionen</strong>${topPost.eng?' · '+fmt(topPost.eng)+' Engagements':''}.` : ''}
+      ${bestType ? `<br><br>🎨 Stärkster Content-Typ: <strong>${TYPE_LABELS[bestType[0]]||bestType[0]}</strong> mit Ø ${fmt(Math.round(bestType[1].sum/bestType[1].n))} Impressionen pro Post.` : ''}
+    </div>
+    <div class="strat-rec"><span style="color:#00A86B">→</span> Format von ${labels[bestMonthIdx]} wiederholen und skalieren</div>
+  </div>`;
+
+  // ── Kachel 2: Was hat nicht gut funktioniert?
+  const worstMonthIdx = impressions.indexOf(Math.min(...impressions.filter(v=>v>0)));
+  // Schwächster Content-Typ
+  const worstType = Object.entries(typeImpr).sort((a,b) => a[1].sum/a[1].n - b[1].sum/b[1].n)[0];
+  // Engagement-Schwäche
+  const avgEng = ins.avgEngRate;
+  const lowEngMonths = labels.filter((_,i) => impressions[i]>0 && engagements[i]/impressions[i]*100 < avgEng*0.5);
+  // Flop-Post analyse
+  const worstPost = flops.length ? [...flops].sort((a,b)=>(a.impr||0)-(b.impr||0))[0]
+                  : [...posts].sort((a,b)=>(a.impr||0)-(b.impr||0))[0];
+
+  let card2Body = `📉 Schwächster Monat: <strong>${labels[worstMonthIdx]}</strong> mit nur <strong>${fmt(impressions[worstMonthIdx])} Impressionen</strong> — deutlich unter dem Durchschnitt.`;
+  if (worstType && bestType && worstType[0] !== bestType[0]) {
+    card2Body += `<br><br>⚠️ Schwächster Content-Typ: <strong>${TYPE_LABELS[worstType[0]]||worstType[0]}</strong> mit Ø nur ${fmt(Math.round(worstType[1].sum/worstType[1].n))} Impressionen — weniger davon einsetzen.`;
+  }
+  if (worstPost) {
+    card2Body += `<br><br>📌 Schwächster Post: <em>"${(worstPost.caption||worstPost.label||'').slice(0,70)}…"</em> — nur ${fmt(worstPost.impr||0)} Impressionen.`;
+  }
+  if (lowEngMonths.length > 0) {
+    card2Body += `<br><br>💬 Engagement-Schwäche in: <strong>${lowEngMonths.slice(0,3).join(', ')}</strong> — Interaktionsrate deutlich unter Ø.`;
+  }
+
+  let card2 = `<div class="strat-card">
+    <div class="strat-accent" style="background:#E03B3B"></div>
+    <div class="strat-badge" style="background:#FFE8E8;color:#8A0000">⚠️ Was nicht funktioniert</div>
+    <div class="strat-val" style="color:#E03B3B">Schwächster Monat: ${labels[worstMonthIdx]}</div>
+    <div class="strat-title">Diese Muster vermeiden</div>
+    <div class="strat-body" style="font-size:12px;color:var(--muted);line-height:1.6">${card2Body}</div>
+    <div class="strat-rec"><span style="color:#E03B3B">→</span> ${worstType&&bestType&&worstType[0]!==bestType[0]?`Weniger "${TYPE_LABELS[worstType[0]]||worstType[0]}" — mehr "${TYPE_LABELS[bestType[0]]||bestType[0]}"`:lowEngMonths.length>0?'In schwachen Monaten: Posts mit direkter Frage beenden':'Posting-Rhythmus in schwachen Monaten überdenken'}</div>
+  </div>`;
+
+  // ── Kachel 3: Beste Posting-Tage
+  const dayStats = {}; // {Mo: {sum:0, n:0}}
+  let hasDayData = false;
+  posts.forEach(post => {
+    const dateStr = post.label || '';
+    // Versuche exaktes Datum zu parsen (z.B. "4.5.2026" oder "2026-05-04")
+    const d = parseDate(dateStr);
+    if (d && d.day) {
+      const dayName = DAYS[new Date(d.year, d.month, d.day).getDay()];
+      if (!dayStats[dayName]) dayStats[dayName] = {sum:0,n:0,eng:0};
+      dayStats[dayName].sum  += post.impr||0;
+      dayStats[dayName].n   += 1;
+      dayStats[dayName].eng += post.eng||0;
+      hasDayData = true;
+    }
+  });
+
+  let card3;
+  if (hasDayData && Object.keys(dayStats).length >= 2) {
+    const sorted = Object.entries(dayStats).sort((a,b) => b[1].sum/b[1].n - a[1].sum/a[1].n);
+    const best = sorted[0], second = sorted[1];
+    const worst = sorted[sorted.length-1];
+    const dayOrder = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+    const barMax = best[1].sum/best[1].n;
+    const barsHtml = sorted.map(([day,s]) => {
+      const pct = Math.round(s.sum/s.n/barMax*100);
+      const isTop = day === best[0];
+      return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <div style="width:22px;font-size:11px;font-weight:600;color:${isTop?p:'var(--muted)'}">${day}</div>
+        <div style="flex:1;background:#F0F1F8;border-radius:999px;height:7px">
+          <div style="width:${pct}%;height:100%;background:${isTop?p:'#C7CAFF'};border-radius:999px"></div>
+        </div>
+        <div style="width:60px;font-size:11px;text-align:right;color:${isTop?p:'var(--muted)'}">${fmtK(Math.round(s.sum/s.n))} Ø</div>
+      </div>`;
+    }).join('');
+
+    card3 = `<div class="strat-card">
+      <div class="strat-accent" style="background:${p}"></div>
+      <div class="strat-badge" style="background:${p}22;color:${p}">📅 Beste Posting-Tage</div>
+      <div class="strat-val" style="color:${p}">${best[0]}${second?` & ${second[0]}`:''}</div>
+      <div class="strat-title">Wann du posten solltest</div>
+      <div class="strat-body" style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:10px">
+        Auswertung aus ${posts.length} Posts mit exaktem Datum:
+      </div>
+      ${barsHtml}
+      <div class="strat-rec" style="margin-top:8px"><span style="color:${p}">→</span> ${best[0]}${second?' und '+second[0]:''} für maximale Reichweite einplanen${worst?' · '+worst[0]+' meiden':''}</div>
+    </div>`;
+  } else {
+    // Kein exaktes Datum → Monatsmuster zeigen
+    const monthlyPeak = labels[bestMonthIdx];
+    const peakMonth = monthlyPeak ? new Date(impressions.reduce((bi,v,i,a)=>v>a[bi]?i:bi,0)*0+
+      (() => { const d = parseDate(labels[bestMonthIdx]); return d ? new Date(d.year,d.month,1).getMonth() : -1; })()) : null;
+    const bestWeekday = ['Mo','Di','Mi','Do','Fr'].includes('Di') ? 'Di' : 'Mi';
+
+    card3 = `<div class="strat-card">
+      <div class="strat-accent" style="background:${p}"></div>
+      <div class="strat-badge" style="background:${p}22;color:${p}">📅 Beste Posting-Tage</div>
+      <div class="strat-val" style="color:${p}">Di, Mi & Do</div>
+      <div class="strat-title">Optimale Posting-Zeiten</div>
+      <div class="strat-body" style="font-size:12px;color:var(--muted);line-height:1.6">
+        Für eine genaue Tages-Auswertung werden exakte Post-Daten benötigt. Nach LinkedIn-Benchmark performen B2B-Posts am stärksten:
+        <br><br>
+        🥇 <strong>Dienstag & Mittwoch</strong> — höchste organische Reichweite<br>
+        🥈 <strong>Donnerstag</strong> — starke Engagement-Rate<br>
+        ❌ <strong>Wochenende</strong> — deutlich geringere Sichtbarkeit
+        <br><br>
+        Beste Uhrzeit: <strong>7–9 Uhr</strong> oder <strong>17–19 Uhr</strong>
+      </div>
+      <div class="strat-rec"><span style="color:${p}">→</span> Di–Do zwischen 7–9 Uhr posten für maximale Reichweite</div>
+    </div>`;
+  }
+
+  return card1 + card2 + card3;
+}
+
 function renderDash(container) {
   const c = getClient(ROUTE.clientId);
   if (!c) { navigate('home'); return; }
@@ -3059,31 +3201,10 @@ function buildDashHTML(c, ins) {
 
   html += `
   <div class="section-hd">
-    <span class="section-lbl">Content-Strategie · Was die Daten sagen</span>
+    <span class="section-lbl">Was sagen die Daten?</span>
     <div class="section-line"></div>
-    <button onclick="resetRecsToBlank('${c.id}')" style="flex-shrink:0;background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap" title="Alle Karten leeren und selbst ausfüllen">✏️ Leer starten</button>
   </div>
-  <div class="strat-grid">`;
-  recs.forEach((r,i) => {
-    const isEmpty = !r.title || r.title === '—';
-    html += `<div class="strat-card${isEmpty?' strat-card-empty':''}">
-      <div class="strat-accent" style="background:${r.color||p}"></div>
-      <button class="strat-edit-btn" onclick="editRec(${i})" style="opacity:${isEmpty?'1':''}">✏️ Ausfüllen</button>
-      ${isEmpty
-        ? `<div style="text-align:center;padding:2rem 0;color:var(--muted)">
-             <div style="font-size:28px;margin-bottom:8px">📝</div>
-             <div style="font-size:13px;font-weight:600">Empfehlung ${i+1}</div>
-             <div style="font-size:11px;margin-top:4px">Klicke auf ✏️ Ausfüllen</div>
-           </div>`
-        : `<div class="strat-badge" style="background:${r.badgeBg};color:${r.badgeCol}">${r.badge}</div>
-           <div class="strat-val" style="color:${r.color}">${r.val}</div>
-           <div class="strat-title">${r.title}</div>
-           <div class="strat-body">${r.body}</div>
-           <div class="strat-rec"><span style="color:${r.color}">→</span> ${r.rec}</div>`
-      }
-    </div>`;
-  });
-  html += `</div>
+  <div class="strat-grid">${buildDataInsights(c, ins, p)}</div>
 
   <div style="margin-top:12px;margin-bottom:1.5rem">
     <div class="strat-card" style="cursor:text;position:relative" onclick="editCustomNote('${c.id}')">
