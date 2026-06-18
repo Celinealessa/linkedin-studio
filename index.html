@@ -1853,6 +1853,14 @@ function smartImport_collect(data, type, filename) {
     } else {
       const wb = XLSX.read(data, { type:'array', cellDates:false, raw:false });
       console.log('[Upload] Sheets:', wb.SheetNames.join(', '));
+      // ── LinkedIn Company Page format detection (Kennzahlen + Alle Beiträge sheets)
+      const companySheets = ['kennzahlen','alle beiträge','alle beitrage'];
+      if (wb.SheetNames.some(n => companySheets.includes(n.toLowerCase().replace(/ä/g,'ä')))) {
+        console.log('[Upload] LinkedIn Company Page format detected');
+        const result = parseLinkedInCompanyPage(wb);
+        if (result) { result._filename = filename; _multiResults.push(result); return; }
+        console.warn('[Upload] CompanyPage parse returned null, falling back');
+      }
       // ── LinkedIn AggregateAnalytics format detection (ENGAGEMENT, TOP POSTS, FOLLOWERS sheets)
       const liSheets = ['engagement','top posts','followers','discovery','top-beiträge','topbeiträge','follower_innen','followerinnen','follower innen','auffindbarkeit','demografische daten'];
       if (wb.SheetNames.some(n => liSheets.includes(n.toLowerCase()))) {
@@ -1900,6 +1908,115 @@ function extractCaptionFromUrl(url) {
     slug = slug.replace(/-(share|ugcPost|activity|videoActivity)$/i, '');
     return slug.replace(/-/g, ' ').trim();
   } catch(e) { return ''; }
+}
+
+// ── LinkedIn Company Page Excel parser (Kennzahlen + Alle Beiträge)
+function parseLinkedInCompanyPage(wb) {
+  try {
+    const getWs = name => {
+      const lower = name.toLowerCase().replace(/[\s_äöüß]/g, s => ({ä:'ae',ö:'oe',ü:'ue',ß:'ss',' ':''}[s]||s));
+      const match = wb.SheetNames.find(n => n.toLowerCase().replace(/[\s_äöüß]/g, s => ({ä:'ae',ö:'oe',ü:'ue',ß:'ss',' ':''}[s]||s)) === lower);
+      return match ? wb.Sheets[match] : null;
+    };
+
+    const kWs = getWs('kennzahlen');
+    const bWs = getWs('allebeitraege') || getWs('allegeiträge') || wb.Sheets[wb.SheetNames.find(n=>n.toLowerCase().includes('beitr'))];
+
+    if (!kWs) return null;
+
+    const kRows = XLSX.utils.sheet_to_json(kWs, {header:1, defval:'', raw:false});
+    // Row 0: description text, Row 1: headers, Row 2+: data
+    const hRow = kRows[1] || [];
+    const colIdx = name => hRow.findIndex(h => String(h).toLowerCase().includes(name.toLowerCase()));
+
+    const iDate    = 0;
+    const iImprOrg = colIdx('Impressions (organische');
+    const iImprTot = colIdx('Impressions (insgesamt)');
+    const iKlicks  = colIdx('Klicks (insgesamt)');
+    const iReakt   = colIdx('Reaktionen (insgesamt)');
+    const iKomm    = colIdx('Kommentare (insgesamt)');
+    const iShares  = colIdx('Direkt geteilte Beiträge (insgesamt)');
+    const iEngRate = colIdx('Engagement Rate (insgesamt)');
+
+    // Aggregate daily → monthly
+    const monthMap = new Map();
+    for (let i = 2; i < kRows.length; i++) {
+      const row = kRows[i];
+      const dateStr = String(row[iDate]||'').trim();
+      if (!dateStr) continue;
+      // Format: MM/DD/YYYY
+      const m = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (!m) continue;
+      const month = parseInt(m[1])-1; // 0-based
+      const year  = parseInt(m[3]);
+      const key   = `${year}-${String(month+1).padStart(2,'0')}`;
+      if (!monthMap.has(key)) monthMap.set(key, {year, month, impr:0, klicks:0, reaktionen:0, kommentare:0, shares:0, engRateSum:0, engRateN:0});
+      const mo = monthMap.get(key);
+      mo.impr        += parseNum(row[iImprTot]||row[iImprOrg]);
+      mo.klicks      += parseNum(row[iKlicks]);
+      mo.reaktionen  += parseNum(row[iReakt]);
+      mo.kommentare  += parseNum(row[iKomm]);
+      mo.shares      += parseNum(row[iShares]);
+      const er = parseFloat(String(row[iEngRate]||'0').replace(',','.'));
+      if (er > 0) { mo.engRateSum += er; mo.engRateN++; }
+    }
+
+    const sorted = [...monthMap.entries()].sort((a,b)=>a[0]<b[0]?-1:1);
+    if (!sorted.length) return null;
+
+    const labels      = sorted.map(([,m]) => fmtMonthLabel(m.year, m.month));
+    const impressions = sorted.map(([,m]) => m.impr);
+    const klicks      = sorted.map(([,m]) => m.klicks);
+    const engagements = sorted.map(([,m]) => m.reaktionen + m.kommentare + m.shares);
+    const followers   = sorted.map(() => 0); // not in this export
+    const postsPerMonth = sorted.map(() => 0);
+
+    const d = { labels, impressions, followers, engagements, postsPerMonth, totalFollowers: 0 };
+
+    // Parse Alle Beiträge
+    const autoPosts = [];
+    if (bWs) {
+      const bRows = XLSX.utils.sheet_to_json(bWs, {header:1, defval:'', raw:false});
+      const bHeader = bRows[1] || [];
+      const bCol = name => bHeader.findIndex(h => String(h).toLowerCase().includes(name.toLowerCase()));
+      const iTitel  = 0;
+      const iLink   = bCol('Link veröffent');
+      const iArt    = bCol('Art des Beitrags');
+      const iDate2  = bCol('Erstellt am');
+      const iImpr2  = bCol('Impressions');
+      const iKlick2 = bCol('Klicks');
+      const iCTR    = bCol('Klickrate');
+      const iLikes  = bCol('Likes');
+      const iComm2  = bCol('Kommentare');
+      const iShares2= bCol('Direkt');
+      const iEngR2  = bCol('Engagement Rate');
+      const iArtI   = bCol('Art des Inhalts');
+
+      for (let i = 2; i < bRows.length; i++) {
+        const row = bRows[i];
+        const caption = String(row[iTitel]||'').trim();
+        if (!caption) continue;
+        const url     = String(row[iLink]||'').trim();
+        const impr    = parseNum(row[iImpr2]);
+        const klick   = parseNum(row[iKlick2]);
+        const likes   = parseNum(row[iLikes]);
+        const comm    = parseNum(row[iComm2]);
+        const shr     = parseNum(row[iShares2]);
+        const eng     = likes + comm + shr;
+        const dateRaw = String(row[iDate2]||'').trim();
+        // date format: DD.MM.YYYY HH:mm or MM/DD/YYYY
+        let label = dateRaw.replace(/\s+\d+:\d+.*$/, '');
+
+        autoPosts.push({ caption: caption.slice(0, 200), label, url, impr, eng, likes, comments: comm, shares: shr, type: 'story' });
+      }
+      autoPosts.sort((a,b) => b.impr - a.impr);
+    }
+
+    return { d, mode: 'company', months: labels.length, totalRows: sorted.length, autoPosts: autoPosts.slice(0,10), autoFlopPosts: [], _isCompany: true };
+  } catch(e) {
+    console.error('[parseLinkedInCompanyPage]', e);
+    return null;
+  }
 }
 
 // ── LinkedIn AggregateAnalytics Excel parser (EN + DE sheet names)
@@ -2309,14 +2426,17 @@ function confirmImport() {
     return;
   }
 
+  // Company Page import: set type flag
+  if (_pendingImport._isCompany) c.type = 'company';
+
   // Save data
   c.monthly = d;
   if (autoPosts && autoPosts.length) {
     const existing = new Set((c.posts||[]).map(p=>p.caption));
     const newPosts = autoPosts.filter(p => !existing.has(p.caption)).map(p => ({
-      caption: p.caption, label: p.date || '',
-      impr: p.impr, likes: p.likes || 0, comments: p.comm || 0,
-      shares: p.shar || 0, eng: p.eng || 0, url: p.url || '', type: 'story'
+      caption: p.caption, label: p.label || p.date || '',
+      impr: p.impr, likes: p.likes || 0, comments: p.comments || p.comm || 0,
+      shares: p.shares || p.shar || 0, eng: p.eng || 0, url: p.url || '', type: 'story'
     }));
     c.posts = [...(c.posts||[]), ...newPosts].sort((a,b)=>b.impr-a.impr).slice(0,10);
   }
