@@ -606,11 +606,14 @@ body {
         <span class="si-icon">🏠</span> Übersicht
       </button>
 
-      <div class="sidebar-section-label" style="margin-top:12px">Kunden</div>
+      <div class="sidebar-section-label" style="margin-top:12px">👤 Persönliche Profile</div>
       <div id="sidebarClients"></div>
+      <div class="sidebar-section-label" style="margin-top:8px">🏢 Company Pages</div>
+      <div id="sidebarCompany"></div>
     </div>
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
+    <button class="sidebar-add-btn" onclick="createNewCompanyClient()" style="background:rgba(10,102,194,0.15);color:#0A66C2;margin-top:4px">🏢 Neue Company Page</button>
 
     <button id="globalSaveBtn" onclick="globalSave()" style="margin:0 12px 8px;width:calc(100% - 24px);padding:10px;border-radius:10px;border:none;background:#1A1F36;color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:background .15s" onmouseover="this.style.background='#2d3561'" onmouseout="this.style.background='#1A1F36'">
       <span>💾</span> Alles speichern
@@ -1035,6 +1038,7 @@ function renderApp() {
   if (ROUTE.view === 'home') { renderHome(vc); updateTopbar('home'); }
   else if (ROUTE.view === 'edit') { renderEdit(vc); updateTopbar('edit'); }
   else if (ROUTE.view === 'dash') { renderDash(vc); updateTopbar('dash'); }
+  else if (ROUTE.view === 'postanalysis') { renderPostAnalysis(vc); updateTopbar('dash'); }
 }
 
 function updateTopbar(view) {
@@ -1071,6 +1075,7 @@ function updateTopbar(view) {
     } else {
       ta.innerHTML = `
         <button class="btn btn-sm" onclick="navigate('edit','${ROUTE.clientId}')">✏️ Bearbeiten</button>
+        <button class="btn btn-sm" onclick="navigate('postanalysis','${ROUTE.clientId}')">📊 Post-Analyse</button>
         <button class="btn btn-sm" onclick="window.print()">🖨️ PDF</button>
         <button class="btn btn-sm" onclick="copyShareLink('${ROUTE.clientId}')" title="Link für den Kunden kopieren">🔗 Kunden-Link</button>
         <button class="btn btn-primary btn-sm" onclick="saveAsHTML()">💾 HTML speichern</button>`;
@@ -1079,17 +1084,24 @@ function updateTopbar(view) {
 }
 
 function renderSidebar() {
-  const container = document.getElementById('sidebarClients');
   document.querySelectorAll('.sidebar-item[data-nav]').forEach(el => el.classList.remove('active'));
   document.getElementById('nav-home')?.classList.toggle('active', ROUTE.view === 'home');
 
-  container.innerHTML = APP.clients.map(c => `
+  const mkItem = c => `
     <button class="sidebar-item ${ROUTE.clientId===c.id ? 'active' : ''}" data-nav="${c.id}"
       onclick="navigate('dash','${c.id}')">
       <span class="si-icon" style="background:${c.ci.primary};border-radius:5px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${contrastColor(c.ci.primary)}">${c.ci.logo?.charAt(0)||c.ci.client?.charAt(0)||'?'}</span>
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.ci.client||'(kein Name)'}</span>
-      ${c.monthly ? '<span class="si-badge">✓</span>' : ''}
-    </button>`).join('');
+      ${c.monthly||c.companyMonthly ? '<span class="si-badge">✓</span>' : ''}
+    </button>`;
+
+  const personal = APP.clients.filter(c => c.type !== 'company');
+  const company  = APP.clients.filter(c => c.type === 'company');
+
+  const pc = document.getElementById('sidebarClients');
+  const cc = document.getElementById('sidebarCompany');
+  if (pc) pc.innerHTML = personal.map(mkItem).join('');
+  if (cc) cc.innerHTML = company.map(mkItem).join('');
 }
 
 // ══════════════════════════════════════════
@@ -2885,6 +2897,7 @@ function buildDataInsights(c, ins, p) {
 function renderDash(container) {
   const c = getClient(ROUTE.clientId);
   if (!c) { navigate('home'); return; }
+  if (c.type === 'company') { renderCompanyDash(container); return; }
   if (!c.monthly?.labels?.length) { navigate('edit', ROUTE.clientId, 'data'); return; }
 
   const ci = c.ci;
@@ -3462,6 +3475,30 @@ function createNewClient() {
   navigate('edit', c.id, 'ci');
 }
 
+function newCompanyClient() {
+  return {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+    type: 'company',
+    ci: { client:'', person:'', period:'', primary:'#0A66C2', accent:'#FFD100', logo:'', logoImg:'', agency:'Branding People GmbH' },
+    monthly: null,
+    companyMonthly: null,
+    splitLabel: '',
+    posts: [],
+    flopPosts: [],
+    mentions: [],
+    goals: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+}
+
+function createNewCompanyClient() {
+  const c = newCompanyClient();
+  APP.clients.push(c);
+  saveApp();
+  navigate('edit', c.id, 'ci');
+}
+
 function askDeleteClient(id) {
   const c = getClient(id);
   if (!c) return;
@@ -3871,6 +3908,311 @@ function resetInsight() {
   renderApp();
   showToast('Auto-Daten wiederhergestellt', 'ok');
 }
+
+// ══════════════════════════════════════════
+//  POST-ANALYSE VIEW
+// ══════════════════════════════════════════
+function renderPostAnalysis(container) {
+  const c = getClient(ROUTE.clientId);
+  if (!c) { navigate('home'); return; }
+  const posts = c.posts || [];
+  const flops = c.flopPosts || [];
+  const all = [...posts.map(p=>({...p,_isFlop:false})), ...flops.map(p=>({...p,_isFlop:true}))];
+  if (!all.length) {
+    container.innerHTML = `<div class="content"><div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">Keine Posts vorhanden</div><div class="empty-sub">Importiere zuerst LinkedIn-Daten für diesen Kunden.</div><button class="btn btn-primary" onclick="navigate('dash','${c.id}')">← Zurück zum Dashboard</button></div></div>`;
+    return;
+  }
+
+  const avgImpr = all.reduce((s,p) => s+(p.impr||0), 0) / (all.length||1);
+  const avgEng  = all.filter(p=>p.impr>0).reduce((s,p) => s+((p.eng||0)/(p.impr||1)*100), 0) / (all.filter(p=>p.impr>0).length||1);
+  const TYPE_LABELS = {story:'Story/Persönlich',humor:'Humor',tech:'Tech/Insights',network:'Netzwerk',branch:'Branche',text:'Text-Post',video:'Video',carousel:'Carousel',image:'Bild-Post',poll:'Umfrage',kampagne:'Kampagne',unternehmenskultur:'Unternehmenskultur'};
+
+  let filter = 'all';
+
+  function badge(p) {
+    const r = (p.impr||0)/avgImpr;
+    if (r >= 1.4) return {label:'🟢 Top-Performer', color:'#00A86B', bg:'#E8F8F2'};
+    if (r <= 0.6) return {label:'🔴 Unter-Performer', color:'#E03B3B', bg:'#FFF0F0'};
+    return {label:'🟡 Durchschnitt', color:'#C89500', bg:'#FFFBEA'};
+  }
+
+  function autoWhy(p) {
+    const b = badge(p);
+    const typeLabel = TYPE_LABELS[p.type]||p.type||'Unbekannt';
+    const engRate = p.impr>0 ? ((p.eng||0)/p.impr*100).toFixed(1) : '0';
+    if (b.color === '#00A86B') {
+      const reasons = [];
+      if (p.impr > avgImpr*2) reasons.push(`Reichweite ${fmt(p.impr)} Impr. — ${Math.round(p.impr/avgImpr*10)/10}x über dem Schnitt`);
+      if (parseFloat(engRate) > avgEng*1.3) reasons.push(`Engagement-Rate ${engRate}% überdurchschnittlich`);
+      if (p.comments > 5) reasons.push(`${p.comments} Kommentare — hohe Interaktion`);
+      reasons.push(`Format "${typeLabel}" hat hier gut funktioniert`);
+      return '<strong>Warum es funktioniert hat:</strong> ' + reasons.slice(0,3).join(' · ');
+    }
+    if (b.color === '#E03B3B') {
+      const reasons = [];
+      if (p.impr < avgImpr*0.4) reasons.push(`Nur ${fmt(p.impr)} Impr. — deutlich unter Schnitt`);
+      if (parseFloat(engRate) < 0.5) reasons.push(`Engagement-Rate ${engRate}% sehr niedrig`);
+      reasons.push(`Format "${typeLabel}" hat bei diesem Publikum weniger resoniert`);
+      return '<strong>Warum es nicht funktioniert hat:</strong> ' + reasons.slice(0,3).join(' · ');
+    }
+    return `Ø Leistung — ${fmt(p.impr)} Impr., ${engRate}% Eng.-Rate`;
+  }
+
+  function postCard(p, idx, isFlop) {
+    const b = badge(p);
+    const typeLabel = TYPE_LABELS[p.type]||p.type||'—';
+    const engRate = p.impr>0 ? ((p.eng||0)/p.impr*100).toFixed(2).replace('.',',') : '0,00';
+    const noteId = `pnote_${isFlop?'f':'t'}_${idx}`;
+    const savedNote = p.analysis || '';
+    return `<div class="pa-card" style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:14px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="background:${b.bg};color:${b.color};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">${b.label}</span>
+          <span style="background:#E8EDFF;color:#3B3FCC;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600">${typeLabel}</span>
+          ${p.label?`<span style="font-size:11px;color:var(--muted)">📅 ${p.label}</span>`:''}
+          ${isFlop?`<span style="background:#FFF0F0;color:#C0392B;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:600">Flop-Post</span>`:''}
+        </div>
+        ${p.url?`<a href="${p.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="flex-shrink:0;background:#0A66C2;color:#fff;padding:5px 12px;border-radius:7px;font-size:11px;font-weight:700;text-decoration:none">↗ LinkedIn</a>`:''}
+      </div>
+      ${p.caption?`<div style="font-size:13px;line-height:1.7;color:var(--text);margin-bottom:12px">${p.caption.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`:''}
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+        <div style="text-align:center"><div style="font-size:17px;font-weight:800;color:${b.color}">${fmt(p.impr||0)}</div><div style="font-size:10px;color:var(--muted)">Impressionen</div></div>
+        ${p.eng?`<div style="text-align:center"><div style="font-size:17px;font-weight:800">${fmt(p.eng)}</div><div style="font-size:10px;color:var(--muted)">Engagements</div></div>`:''}
+        ${p.likes?`<div style="text-align:center"><div style="font-size:17px;font-weight:800">${p.likes}</div><div style="font-size:10px;color:var(--muted)">Likes</div></div>`:''}
+        ${p.comments?`<div style="text-align:center"><div style="font-size:17px;font-weight:800">${p.comments}</div><div style="font-size:10px;color:var(--muted)">Kommentare</div></div>`:''}
+        <div style="text-align:center"><div style="font-size:17px;font-weight:800">${engRate}%</div><div style="font-size:10px;color:var(--muted)">Eng.-Rate</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.6;background:#F8F9FF;border-radius:8px;padding:10px 12px;margin-bottom:10px">${autoWhy(p)}</div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">📝 Eigene Notiz</div>
+        <textarea id="${noteId}" rows="2" placeholder="Eigene Analyse, Learnings, Kontext…" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-family:'DM Sans',sans-serif;font-size:12px;resize:vertical;color:var(--text);background:var(--bg)" onblur="savePostNote('${c.id}','${isFlop?'flop':'top'}',${idx},this.value)">${savedNote}</textarea>
+      </div>
+    </div>`;
+  }
+
+  const sorted = [...all].sort((a,b) => (b.impr||0)-(a.impr||0));
+
+  container.innerHTML = `
+    <div class="content" style="max-width:900px;margin:0 auto;padding:24px 16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="navigate('dash','${c.id}')" style="gap:5px">← Dashboard</button>
+        <h2 style="font-size:20px;font-weight:800;margin:0;flex:1">📊 Post-Analyse · ${c.ci.client||'Kunde'}</h2>
+        <div style="display:flex;gap:6px">
+          <button id="paAll" class="btn btn-sm btn-primary" onclick="filterPostAnalysis('all','${c.id}')">Alle (${all.length})</button>
+          <button id="paTop" class="btn btn-sm" onclick="filterPostAnalysis('top','${c.id}')">🟢 Top (${all.filter(p=>badge(p).color==='#00A86B').length})</button>
+          <button id="paMid" class="btn btn-sm" onclick="filterPostAnalysis('mid','${c.id}')">🟡 Ø (${all.filter(p=>badge(p).color==='#C89500').length})</button>
+          <button id="paFlop" class="btn btn-sm" onclick="filterPostAnalysis('flop','${c.id}')">🔴 Flop (${all.filter(p=>badge(p).color==='#E03B3B').length})</button>
+        </div>
+      </div>
+      <div style="background:#F4F5FF;border:1px solid #C7CAFF;border-radius:12px;padding:14px 18px;margin-bottom:20px;font-size:13px;color:var(--muted)">
+        Ø Impressionen: <strong style="color:var(--text)">${fmt(Math.round(avgImpr))}</strong> · Ø Engagement-Rate: <strong style="color:var(--text)">${avgEng.toFixed(1).replace('.',',')}%</strong> · ${all.length} Posts analysiert
+      </div>
+      <div id="paCards">${sorted.map((p,i) => postCard(p, all.indexOf(p), p._isFlop)).join('')}</div>
+    </div>`;
+}
+
+function filterPostAnalysis(f, cid) {
+  const c = getClient(cid);
+  if (!c) return;
+  ['paAll','paTop','paMid','paFlop'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.classList.remove('btn-primary'); el.style.background=''; el.style.color=''; }
+  });
+  const activeBtn = document.getElementById(f==='all'?'paAll':f==='top'?'paTop':f==='mid'?'paMid':'paFlop');
+  if (activeBtn) activeBtn.classList.add('btn-primary');
+
+  const posts = c.posts || [];
+  const flops = c.flopPosts || [];
+  const all = [...posts.map(p=>({...p,_isFlop:false})), ...flops.map(p=>({...p,_isFlop:true}))];
+  const avgImpr = all.reduce((s,p)=>s+(p.impr||0),0)/(all.length||1);
+  const TYPE_LABELS = {story:'Story/Persönlich',humor:'Humor',tech:'Tech/Insights',network:'Netzwerk',branch:'Branche',text:'Text-Post',video:'Video',carousel:'Carousel',image:'Bild-Post',poll:'Umfrage',kampagne:'Kampagne',unternehmenskultur:'Unternehmenskultur'};
+  function badge(p){const r=(p.impr||0)/avgImpr;if(r>=1.4)return{color:'#00A86B'};if(r<=0.6)return{color:'#E03B3B'};return{color:'#C89500'};}
+  let filtered = [...all].sort((a,b)=>(b.impr||0)-(a.impr||0));
+  if (f==='top') filtered = filtered.filter(p=>badge(p).color==='#00A86B');
+  else if (f==='mid') filtered = filtered.filter(p=>badge(p).color==='#C89500');
+  else if (f==='flop') filtered = filtered.filter(p=>badge(p).color==='#E03B3B');
+  // Re-render cards by navigating again
+  navigate('postanalysis', cid);
+}
+
+function savePostNote(cid, listType, idx, value) {
+  const c = getClient(cid);
+  if (!c) return;
+  const list = listType === 'flop' ? (c.flopPosts||[]) : (c.posts||[]);
+  if (list[idx]) { list[idx].analysis = value; saveApp(); }
+}
+
+// ══════════════════════════════════════════
+//  COMPANY DASHBOARD
+// ══════════════════════════════════════════
+function renderCompanyDash(container) {
+  const c = getClient(ROUTE.clientId);
+  if (!c) { navigate('home'); return; }
+  const p = c.ci.primary || '#0A66C2';
+  const acc = c.ci.accent || '#FFD100';
+  const monthly = c.monthly;
+  const cm = c.companyMonthly;
+  const mentions = c.mentions || [];
+  const posts = c.posts || [];
+
+  const hasMonthly = monthly?.labels?.length;
+  const hasCM = cm?.labels?.length;
+
+  // KPIs aus monthly
+  let totalImpr=0, totalFoll=0, totalEng=0, totalVisitors=0, totalPageViews=0, totalClicks=0, totalMentions=mentions.length;
+  if (hasMonthly) {
+    totalImpr = (monthly.impressions||[]).reduce((s,v)=>s+v,0);
+    totalFoll = (monthly.followers||[]).reduce((s,v)=>s+v,0);
+    totalEng  = (monthly.engagements||[]).reduce((s,v)=>s+v,0);
+  }
+  if (hasCM) {
+    totalVisitors  = (cm.visitors||[]).reduce((s,v)=>s+v,0);
+    totalPageViews = (cm.pageViews||[]).reduce((s,v)=>s+v,0);
+    totalClicks    = (cm.clicks||[]).reduce((s,v)=>s+v,0);
+  }
+
+  const kpiHtml = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px">
+      ${[
+        {icon:'👁',val:fmtK(totalImpr),lbl:'Impressionen',show:hasMonthly},
+        {icon:'👥',val:fmtK(totalFoll),lbl:'Follower-Wachstum',show:hasMonthly},
+        {icon:'⚡',val:fmtK(totalEng),lbl:'Engagements',show:hasMonthly},
+        {icon:'🔍',val:fmtK(totalVisitors),lbl:'Unique Visitors',show:hasCM},
+        {icon:'📄',val:fmtK(totalPageViews),lbl:'Page Views',show:hasCM},
+        {icon:'🖱️',val:fmtK(totalClicks),lbl:'Klicks',show:hasCM},
+        {icon:'💬',val:String(totalMentions),lbl:'Erwähnungen',show:true},
+      ].filter(k=>k.show).map(k=>`
+        <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;text-align:center">
+          <div style="font-size:20px;margin-bottom:4px">${k.icon}</div>
+          <div style="font-size:22px;font-weight:800;color:${p}">${k.val}</div>
+          <div style="font-size:11px;color:var(--muted);font-weight:500">${k.lbl}</div>
+        </div>`).join('')}
+    </div>`;
+
+  // Mentions table
+  const mentionsHtml = `
+    <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div style="font-size:15px;font-weight:700">💬 Erwähnungen</div>
+        <button class="btn btn-sm btn-primary" onclick="openAddMention('${c.id}')">＋ Erwähnung hinzufügen</button>
+      </div>
+      ${mentions.length ? `
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="border-bottom:2px solid var(--border)">
+            <th style="text-align:left;padding:6px 8px;color:var(--muted);font-weight:600">Datum</th>
+            <th style="text-align:left;padding:6px 8px;color:var(--muted);font-weight:600">Quelle</th>
+            <th style="text-align:left;padding:6px 8px;color:var(--muted);font-weight:600">Text</th>
+            <th style="text-align:right;padding:6px 8px;color:var(--muted);font-weight:600">Reichweite</th>
+            <th style="padding:6px 8px"></th>
+          </tr></thead>
+          <tbody>
+            ${mentions.map((m,i)=>`<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:8px;white-space:nowrap">${m.date||'—'}</td>
+              <td style="padding:8px"><span style="background:#E8EDFF;color:#3B3FCC;padding:2px 8px;border-radius:10px;font-size:11px">${m.source||'—'}</span></td>
+              <td style="padding:8px;max-width:300px">${m.url?`<a href="${m.url}" target="_blank" rel="noopener" style="color:#0A66C2">${(m.text||'').slice(0,80)}…</a>`:(m.text||'—').slice(0,80)}</td>
+              <td style="padding:8px;text-align:right;font-weight:600">${m.reach?fmtK(m.reach):'—'}</td>
+              <td style="padding:8px"><button onclick="deleteMention('${c.id}',${i})" style="background:none;border:none;cursor:pointer;color:#aaa;font-size:14px" title="Löschen">✕</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>` : `<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px">Noch keine Erwähnungen eingetragen.</div>`}
+    </div>`;
+
+  // Posts section
+  const postsHtml = posts.length ? `
+    <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:20px">
+      <div style="font-size:15px;font-weight:700;margin-bottom:14px">🏆 Top-Posts</div>
+      <div class="posts-list">
+        ${posts.slice(0,5).map((post,i)=>{
+          const tm = (typeof TYPE_META !== 'undefined' && TYPE_META[post.type])||{label:post.type||'Post',bg:'#F1EFEA',col:'#4A4A4A'};
+          return `<div class="post-row" onclick="openPostOverlay(${i})" style="cursor:pointer">
+            <div class="post-rank ${i===0?'g':i===1?'s':i===2?'b':''}">#${i+1}</div>
+            <div style="flex:1;min-width:0"><div class="post-cap">${post.caption||'—'}</div><div class="post-meta">${post.label||''}</div></div>
+            <div class="post-pill" style="background:${tm.bg};color:${tm.col}">${tm.label}</div>
+            ${post.url?`<a href="${post.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="flex-shrink:0;background:#0A66C2;color:#fff;padding:5px 12px;border-radius:7px;font-size:11px;font-weight:700;text-decoration:none">↗ LinkedIn</a>`:'<div></div>'}
+            <div class="post-impr" style="color:${p}">${fmt(post.impr||0)}<div style="font-size:9px;color:var(--muted);font-weight:400">Impressionen</div></div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
+  container.innerHTML = `
+    <div class="content" style="max-width:1060px;margin:0 auto;padding:24px 16px">
+      <div style="background:${p};border-radius:16px;padding:20px 24px;margin-bottom:24px;color:#fff;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:11px;opacity:0.7;font-weight:600;letter-spacing:.05em;text-transform:uppercase">🏢 Company Page</div>
+          <div style="font-size:22px;font-weight:800;margin-top:2px">${c.ci.client||'Company Page'}</div>
+          <div style="font-size:12px;opacity:0.75;margin-top:2px">${c.ci.period||''}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sm" onclick="navigate('edit','${c.id}')" style="background:rgba(255,255,255,0.2);color:#fff;border-color:rgba(255,255,255,0.4)">✏️ Bearbeiten</button>
+          <button class="btn btn-sm" onclick="navigate('postanalysis','${c.id}')" style="background:rgba(255,255,255,0.2);color:#fff;border-color:rgba(255,255,255,0.4)">📊 Post-Analyse</button>
+          <button class="btn btn-sm" onclick="openAddMention('${c.id}')" style="background:rgba(255,255,255,0.2);color:#fff;border-color:rgba(255,255,255,0.4)">＋ Erwähnung</button>
+        </div>
+      </div>
+      ${!hasMonthly && !hasCM && !mentions.length && !posts.length ? `
+        <div class="empty-state">
+          <div class="empty-icon">🏢</div>
+          <div class="empty-title">Noch keine Daten</div>
+          <div class="empty-sub">Bearbeite die Company Page und importiere LinkedIn-Daten.</div>
+          <button class="btn btn-primary" onclick="navigate('edit','${c.id}')">Daten eingeben</button>
+        </div>` : kpiHtml + mentionsHtml + postsHtml}
+    </div>`;
+}
+
+function openAddMention(cid) {
+  document.getElementById('mentionCid').value = cid;
+  document.getElementById('mentionIdx').value = '';
+  ['mentionDate','mentionSource','mentionText','mentionUrl','mentionReach'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+  openModal('mentionModal');
+}
+
+function saveMentionEntry() {
+  const cid = document.getElementById('mentionCid').value;
+  const c = getClient(cid);
+  if (!c) return;
+  if (!c.mentions) c.mentions = [];
+  const entry = {
+    date:   document.getElementById('mentionDate').value.trim(),
+    source: document.getElementById('mentionSource').value.trim(),
+    text:   document.getElementById('mentionText').value.trim(),
+    url:    document.getElementById('mentionUrl').value.trim(),
+    reach:  parseInt(document.getElementById('mentionReach').value)||0
+  };
+  c.mentions.push(entry);
+  saveApp();
+  closeModal('mentionModal');
+  renderApp();
+  showToast('Erwähnung gespeichert', 'ok');
+}
+
+function deleteMention(cid, idx) {
+  const c = getClient(cid);
+  if (!c || !c.mentions) return;
+  c.mentions.splice(idx, 1);
+  saveApp();
+  renderApp();
+  showToast('Erwähnung gelöscht', 'ok');
+}
 </script>
+
+<!-- Mention Modal -->
+<div class="overlay" id="mentionModal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-h"><h3>💬 Erwähnung hinzufügen</h3><button class="modal-x" onclick="closeModal('mentionModal')">✕</button></div>
+    <div class="modal-b" style="display:flex;flex-direction:column;gap:12px">
+      <input type="hidden" id="mentionCid">
+      <input type="hidden" id="mentionIdx">
+      <div class="form-group" style="margin:0"><label class="form-label">📅 Datum</label><input class="form-input" id="mentionDate" placeholder="z.B. 15.06.2025"></div>
+      <div class="form-group" style="margin:0"><label class="form-label">📍 Quelle / Plattform</label><input class="form-input" id="mentionSource" placeholder="z.B. LinkedIn, Twitter, Pressemitteilung"></div>
+      <div class="form-group" style="margin:0"><label class="form-label">📝 Text / Beschreibung</label><textarea class="form-input" id="mentionText" rows="3" placeholder="Was wurde erwähnt?"></textarea></div>
+      <div class="form-group" style="margin:0"><label class="form-label">🔗 Link (optional)</label><input class="form-input" id="mentionUrl" placeholder="https://…"></div>
+      <div class="form-group" style="margin:0"><label class="form-label">👁 Reichweite (optional)</label><input class="form-input" type="number" id="mentionReach" placeholder="z.B. 50000"></div>
+    </div>
+    <div class="modal-f">
+      <button class="btn" onclick="closeModal('mentionModal')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="saveMentionEntry()">💾 Speichern</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
