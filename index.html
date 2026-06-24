@@ -723,6 +723,8 @@ function saveApp() {
   }
 }
 
+
+  // Pre-seed GitHub token for Gist share links
 const APP = loadApp();
 if (!APP.programs) APP.programs = [];
 
@@ -4818,11 +4820,11 @@ function renderCIProgramDash(container) {
     </div>
   </div>
   <div class="dash-topbar">
-    <button class="btn btn-sm" onclick="navigate('ciprogramedit','${pg.id}')">✏️ Bearbeiten</button>
+    ${window._ciReadOnly ? '' : `<button class="btn btn-sm" onclick="navigate('ciprogramedit','${pg.id}')">✏️ Bearbeiten</button>`}
     <div style="margin-left:auto;display:flex;gap:8px">
       <button class="btn btn-sm" onclick="window.print()">🖨️ PDF</button>
-      <button class="btn btn-sm" onclick="copyCIShareLink('${pg.id}')" style="background:#00A86B;color:#fff;border-color:#00A86B">🔗 Kunden-Link</button>
-      <button class="btn btn-primary btn-sm" onclick="saveAsHTML()">💾 HTML speichern</button>
+      ${window._ciReadOnly ? '' : `<button class="btn btn-sm" onclick="copyCIShareLink('${pg.id}')" style="background:#00A86B;color:#fff;border-color:#00A86B">🔗 Kunden-Link</button>`}
+      ${window._ciReadOnly ? '' : `<button class="btn btn-primary btn-sm" onclick="saveAsHTML()">💾 HTML speichern</button>`}
     </div>
   </div>
   <div class="dash-content">
