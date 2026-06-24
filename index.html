@@ -1055,7 +1055,7 @@ function checkShareParam() {
 
 // ── Isolated read-only dashboard — no sidebar, no other clients, no PAYBACK
 function renderReadOnlyCIDashboard(pg) {
-  // Inject program into APP so renderCIProgramDash can find it
+  window._ciReadOnly = true;
   if (!APP.programs) APP.programs = [];
   pg.id = pg.id || '__ro_ci__';
   const existing = APP.programs.findIndex(p => p.id === pg.id);
