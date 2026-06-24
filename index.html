@@ -610,10 +610,13 @@ body {
       <div id="sidebarClients"></div>
       <div class="sidebar-section-label" style="margin-top:8px">🏢 Company Pages</div>
       <div id="sidebarCompany"></div>
+      <div class="sidebar-section-label" style="margin-top:8px">📊 CI-Programme</div>
+      <div id="sidebarPrograms"></div>
     </div>
 
     <button class="sidebar-add-btn" onclick="createNewClient()">＋ Neuer Kunde</button>
     <button class="sidebar-add-btn" onclick="createNewCompanyClient()" style="background:rgba(10,102,194,0.15);color:#0A66C2;margin-top:4px">🏢 Neue Company Page</button>
+    <button class="sidebar-add-btn" onclick="createNewProgram()" style="background:rgba(91,99,254,0.15);color:#8B93FF;margin-top:4px">📊 Neues CI-Programm</button>
 
     <button id="globalSaveBtn" onclick="globalSave()" style="margin:0 12px 8px;width:calc(100% - 24px);padding:10px;border-radius:10px;border:none;background:#1A1F36;color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:background .15s" onmouseover="this.style.background='#2d3561'" onmouseout="this.style.background='#1A1F36'">
       <span>💾</span> Alles speichern
@@ -680,15 +683,22 @@ function loadApp() {
     const tag = document.getElementById('__appdata');
     if (tag) {
       const embedded = JSON.parse(tag.textContent);
-      if (embedded && embedded.clients) return embedded;
+      if (embedded && embedded.clients) {
+        if (!embedded.programs) embedded.programs = [];
+        return embedded;
+      }
     }
   } catch(e) {}
   // 2. Fallback: localStorage (GitHub Pages)
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (!parsed.programs) parsed.programs = [];
+      return parsed;
+    }
   } catch(e) {}
-  return { clients: [] };
+  return { clients: [], programs: [] };
 }
 
 let _saving = false;
@@ -714,6 +724,7 @@ function saveApp() {
 }
 
 const APP = loadApp();
+if (!APP.programs) APP.programs = [];
 
 // ── PAYBACK Daten — immer aktuell halten (überschreibt alten/kaputten Stand)
 (function ensurePaybackClient() {
@@ -793,6 +804,83 @@ function newClient() {
 
 // ── Router state
 const ROUTE = { view: 'home', clientId: null, step: 'ci' };
+// Per-client date filter: { from: '2025-06', to: '2026-06' } or null = show all
+const DASH_FILTERS = {}; // keyed by clientId
+function getFilter(cid) { return DASH_FILTERS[cid] || { from: null, to: null }; }
+function setFilter(cid, from, to) {
+  DASH_FILTERS[cid] = { from: from||null, to: to||null };
+  renderApp();
+}
+function filterMonthly(monthly, cid) {
+  if (!monthly?.labels?.length) return monthly;
+  const f = getFilter(cid);
+  if (!f.from && !f.to) return monthly;
+  const keys = monthly._sortKeys || monthly.labels;
+  let iFrom = 0, iTo = keys.length - 1;
+  if (f.from) { const i = keys.findIndex(k => k >= f.from); if (i >= 0) iFrom = i; }
+  if (f.to)   { let i = -1; for(let j=keys.length-1;j>=0;j--){if(keys[j]<=f.to){i=j;break;}} if (i >= 0) iTo = i; }
+  if (iFrom > iTo) return monthly;
+  const sl = arr => (arr||[]).slice(iFrom, iTo+1);
+  return {
+    ...monthly,
+    labels: sl(monthly.labels), _sortKeys: sl(monthly._sortKeys||monthly.labels),
+    impressions: sl(monthly.impressions), followers: sl(monthly.followers),
+    engagements: sl(monthly.engagements), postsPerMonth: sl(monthly.postsPerMonth),
+    totalFollowers: monthly.totalFollowers
+  };
+}
+function postLabelToSortKey(label) {
+  if (!label) return '';
+  const s = String(label).trim();
+  // MM/DD/YYYY
+  const mUS = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (mUS) return mUS[3]+'-'+String(parseInt(mUS[1])).padStart(2,'0');
+  // DD.MM.YYYY
+  const mDE = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+  if (mDE) return mDE[3]+'-'+String(parseInt(mDE[2])).padStart(2,'0');
+  // YYYY-MM-DD
+  const mISO = s.match(/^(\d{4})-(\d{2})/);
+  if (mISO) return mISO[1]+'-'+mISO[2];
+  // "Jun 26", "Okt 25" etc.
+  const MONTHS_DE = {jan:'01',feb:'02','mär':'03',mar:'03',apr:'04',mai:'05',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',okt:'10',oct:'10',nov:'11',dez:'12',dec:'12'};
+  const mLbl = s.toLowerCase().match(/^([a-zä]{3})\s+(\d{2})$/);
+  if (mLbl) { const m=MONTHS_DE[mLbl[1]]; const y=parseInt(mLbl[2]); if(m) return (y<50?'20':'19')+String(y).padStart(2,'0')+'-'+m; }
+  return '';
+}
+function filterPosts(posts, cid) {
+  if (!posts?.length) return posts || [];
+  const f = getFilter(cid);
+  if (!f.from && !f.to) return posts;
+  return posts.filter(p => {
+    const k = postLabelToSortKey(p.label);
+    if (!k) return true; // no date → always include
+    if (f.from && k < f.from) return false;
+    if (f.to   && k > f.to)   return false;
+    return true;
+  });
+}
+function renderDatePicker(c) {
+  const monthly = c.monthly;
+  if (!monthly?.labels?.length) return '';
+  const keys = monthly._sortKeys || monthly.labels;
+  const labels = monthly.labels;
+  const f = getFilter(c.id);
+  const opts = keys.map((k,i) => `<option value="${k}" ${f.from===k?'selected':''}>${labels[i]}</option>`).join('');
+  const optsTo = keys.map((k,i) => `<option value="${k}" ${f.to===k?'selected':''}>${labels[i]}</option>`).join('');
+  return `<div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.15);border-radius:10px;padding:6px 12px;flex-wrap:wrap">
+    <span style="font-size:11px;font-weight:600;opacity:0.9">📅 Zeitraum:</span>
+    <select onchange="setFilter('${c.id}',this.value,getFilter('${c.id}').to)"
+      style="background:rgba(255,255,255,0.25);border:1px solid rgba(255,255,255,0.4);color:#fff;border-radius:6px;padding:3px 6px;font-size:12px;cursor:pointer">
+      <option value="">Von Anfang</option>${opts}
+    </select>
+    <span style="font-size:11px;opacity:0.7">–</span>
+    <select onchange="setFilter('${c.id}',getFilter('${c.id}').from,this.value)"
+      style="background:rgba(255,255,255,0.25);border:1px solid rgba(255,255,255,0.4);color:#fff;border-radius:6px;padding:3px 6px;font-size:12px;cursor:pointer">
+      <option value="">Bis Ende</option>${optsTo}
+    </select>
+    ${(f.from||f.to)?`<button onclick="setFilter('${c.id}',null,null)" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:#fff;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer">✕ Reset</button>`:''}
+  </div>`;
+}
 
 // ══════════════════════════════════════════
 //  SHARE LINK
@@ -848,6 +936,7 @@ function buildSharePayload(c) {
     flopPosts: (c.flopPosts||[]).map(p=>({caption:(p.caption||'').slice(0,120),label:p.label,impr:p.impr||0,eng:p.eng||0,likes:p.likes||0,comments:p.comments||0,shares:p.shares||0,url:p.url||'',type:p.type||'story'})),
     splitLabel: c.splitLabel||'',
     goals: c.goals||null,
+      goalsByYear: c.goalsByYear||null,
     insightOverrides: c.insightOverrides||null,
     recommendations: c.recommendations||null,
     contentMix: c.contentMix||null,
@@ -897,47 +986,97 @@ function copyShareLink(clientId) {
   }
 }
 
-// ── On load: ?share=… (oder legacy #share=…) → Dashboard direkt aus URL laden
+// ── On load: ?share=… / ?blob=… → Dashboard direkt aus URL laden
 function checkShareParam() {
-  // Neues Format: ?share= (Query-Parameter, WhatsApp-sicher)
   const params = new URLSearchParams(location.search);
-  let encoded = params.get('share');
-  // Legacy-Fallback: #share= (altes Format)
-  if (!encoded) {
+  let encoded  = params.get('share');
+  const blobId = params.get('blob');
+
+  // Legacy-Fallback: #share=
+  if (!encoded && !blobId) {
     const hash = location.hash;
     if (hash.startsWith('#share=')) encoded = hash.slice(7);
   }
-  if (!encoded) return false;
+  if (!encoded && !blobId) return false;
 
   // Lade-Anzeige sofort zeigen
-  document.body.innerHTML = `<div id="_shareLoading" style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'DM Sans',sans-serif;flex-direction:column;gap:12px;color:#555"><div style="font-size:36px">⏳</div><div style="font-size:15px;font-weight:600">Dashboard wird geladen…</div></div>`;
+  document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'DM Sans',sans-serif;flex-direction:column;gap:12px;color:#555"><div style="font-size:36px">⏳</div><div style="font-size:15px;font-weight:600">Dashboard wird geladen…</div></div>`;
 
-  // Kurze Pause damit Browser DOM rendern kann, dann dekodieren
+  const handleRaw = (raw) => {
+    if (!raw) throw new Error('Leere Daten');
+    // CI-Programm
+    if (raw.type === 'ciprogram' && raw.program) {
+      renderReadOnlyCIDashboard(raw.program);
+      return;
+    }
+    // Personal Branding (legacy)
+    if (!raw.ci) throw new Error('Unbekanntes Format');
+    if (!raw.monthly) throw new Error('Monatsdaten fehlen');
+    renderReadOnlyDashboard(raw);
+  };
+
+  const showError = (msg) => {
+    document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'DM Sans',sans-serif;flex-direction:column;gap:14px;color:#555;padding:24px;text-align:center">
+      <div style="font-size:52px">⚠️</div>
+      <div style="font-size:18px;font-weight:700">Dashboard konnte nicht geladen werden</div>
+      <div style="font-size:13px;background:#fff;padding:12px 18px;border-radius:8px;color:#E03B3B;max-width:400px">${msg}</div>
+      <a href="https://celinealessa.github.io/linkedin-studio/" style="color:#5B63FE;font-size:13px;margin-top:4px">→ Zur App</a>
+    </div>`;
+  };
+
+  if (blobId) {
+    // Fetch from jsonblob.com
+    fetch(`https://jsonblob.com/api/jsonBlob/${blobId}`, { headers:{ Accept:'application/json' } })
+      .then(r => { if (!r.ok) throw new Error('Blob nicht gefunden ('+r.status+')'); return r.json(); })
+      .then(raw => { try { handleRaw(raw); } catch(e) { showError(e.message); } })
+      .catch(e => showError('Verbindung fehlgeschlagen: ' + e.message));
+    return true;
+  }
+
   setTimeout(() => {
     try {
       if (typeof LZString === 'undefined') throw new Error('LZString nicht geladen');
       const raw = shareDecode(encoded);
-      if (!raw) throw new Error('Dekomprimierung fehlgeschlagen');
-      if (!raw.ci) throw new Error('CI-Daten fehlen');
-      if (!raw.monthly) throw new Error('Monatsdaten fehlen');
-      renderReadOnlyDashboard(raw);
+      handleRaw(raw);
     } catch(e) {
       console.error('[Share]', e);
-      const hashLen = encoded.length;
-      document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'DM Sans',sans-serif;flex-direction:column;gap:14px;color:#555;padding:24px;text-align:center">
-        <div style="font-size:52px">⚠️</div>
-        <div style="font-size:18px;font-weight:700">Dashboard konnte nicht geladen werden</div>
-        <div style="font-size:13px;background:#fff;padding:12px 18px;border-radius:8px;color:#E03B3B;max-width:400px">${e.message}</div>
-        <div style="font-size:11px;color:#aaa">Hash-Länge: ${hashLen} Zeichen · LZString: ${typeof LZString}</div>
-        <a href="https://celinealessa.github.io/linkedin-studio/" style="color:#5B63FE;font-size:13px;margin-top:4px">→ Zur App</a>
-        <div style="font-size:11px;color:#aaa;margin-top:8px">Bitte einen neuen Link über das Dashboard erstellen.</div>
-      </div>`;
+      showError(e.message + ' (Länge: ' + encoded.length + ')');
     }
   }, 50);
   return true;
 }
 
 // ── Isolated read-only dashboard — no sidebar, no other clients, no PAYBACK
+function renderReadOnlyCIDashboard(pg) {
+  // Inject program into APP so renderCIProgramDash can find it
+  if (!APP.programs) APP.programs = [];
+  pg.id = pg.id || '__ro_ci__';
+  const existing = APP.programs.findIndex(p => p.id === pg.id);
+  if (existing >= 0) APP.programs[existing] = pg; else APP.programs.push(pg);
+  ROUTE.view = 'ciprogram';
+  ROUTE.clientId = pg.id;
+
+  const prim = pg.ci?.primary || '#5B63FE';
+  const acc  = pg.ci?.accent  || '#FFD100';
+
+  document.body.innerHTML = `
+    <div id="roTopbar" style="background:${prim};color:${contrastColor(prim)};padding:11px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 10px rgba(0,0,0,.18)">
+      <div style="display:flex;align-items:center;gap:12px">
+        ${pg.ci?.logoImg
+          ? `<img src="${pg.ci.logoImg}" style="width:30px;height:30px;border-radius:7px;object-fit:cover">`
+          : `<div style="width:30px;height:30px;border-radius:7px;background:${acc};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:${contrastColor(acc)}">${pg.ci?.logo||pg.name?.charAt(0)||'C'}</div>`}
+        <div>
+          <div style="font-weight:700;font-size:14px">${esc(pg.name||'CI-Dashboard')} · LinkedIn Analytics</div>
+          <div style="font-size:11px;opacity:0.8">${esc(pg.period||'')} · ${esc(pg.agency||'Branding People GmbH')}</div>
+        </div>
+      </div>
+      <div style="font-size:11px;opacity:.7">Powered by LinkedIn Dashboard Studio</div>
+    </div>
+    <div id="roCIContent" style="max-width:1200px;margin:0 auto;padding:1.5rem 2rem 4rem"></div>`;
+
+  renderCIProgramDash(document.getElementById('roCIContent'));
+}
+
 function renderReadOnlyDashboard(c) {
   // Save overlay elements before replacing body (they'll be destroyed otherwise)
   const savedOverlays = ['postOverlay','insightDetailModal','insightEditModal'].map(id => document.getElementById(id)).filter(Boolean);
@@ -1039,6 +1178,8 @@ function renderApp() {
   else if (ROUTE.view === 'edit') { renderEdit(vc); updateTopbar('edit'); }
   else if (ROUTE.view === 'dash') { renderDash(vc); updateTopbar('dash'); }
   else if (ROUTE.view === 'postanalysis') { renderPostAnalysis(vc); updateTopbar('dash'); }
+  else if (ROUTE.view === 'ciprogram') { renderCIProgramDash(vc); updateTopbar('ciprogram'); }
+  else if (ROUTE.view === 'ciprogramedit') { renderCIProgramEdit(vc); updateTopbar('ciprogramedit'); }
 }
 
 function updateTopbar(view) {
@@ -1061,6 +1202,23 @@ function updateTopbar(view) {
     ta.innerHTML = `
       ${hasData ? `<button class="btn btn-sm" onclick="navigate('dash','${ROUTE.clientId}')">Dashboard anzeigen</button>` : ''}
       <button class="btn btn-danger btn-sm" onclick="askDeleteClient('${ROUTE.clientId}')">🗑️</button>`;
+  } else if (view === 'ciprogram') {
+    const pg = (APP.programs||[]).find(p=>p.id===ROUTE.clientId);
+    bc.innerHTML = `<span onclick="navigate('home')" style="cursor:pointer">Übersicht</span>
+      <span class="breadcrumb-sep">/</span>
+      <span class="current" style="color:var(--app-accent)">${pg?.name||'CI-Programm'}</span>`;
+    ta.innerHTML = `<button class="btn btn-sm" onclick="navigate('ciprogramedit','${ROUTE.clientId}')">✏️ Bearbeiten</button>
+      <button class="btn btn-sm" onclick="window.print()">🖨️ PDF</button>
+      <button class="btn btn-primary btn-sm" onclick="saveAsHTML()">💾 HTML speichern</button>`;
+  } else if (view === 'ciprogramedit') {
+    const pg = (APP.programs||[]).find(p=>p.id===ROUTE.clientId);
+    bc.innerHTML = `<span onclick="navigate('home')" style="cursor:pointer">Übersicht</span>
+      <span class="breadcrumb-sep">/</span>
+      <span onclick="navigate('ciprogram','${ROUTE.clientId}')" style="cursor:pointer">${pg?.name||'CI-Programm'}</span>
+      <span class="breadcrumb-sep">/</span>
+      <span class="current" style="color:var(--app-accent)">Bearbeiten</span>`;
+    ta.innerHTML = `${(pg?.clientIds?.length || pg?.members?.length) ? `<button class="btn btn-sm" onclick="navigate('ciprogram','${ROUTE.clientId}')">Dashboard anzeigen</button>` : ''}
+      <button class="btn btn-danger btn-sm" onclick="askDeleteProgram('${ROUTE.clientId}')">🗑️</button>`;
   } else if (view === 'dash') {
     const c = getClient(ROUTE.clientId);
     bc.innerHTML = `<span onclick="navigate('home')" style="cursor:pointer">Übersicht</span>
@@ -1102,31 +1260,32 @@ function renderSidebar() {
   const cc = document.getElementById('sidebarCompany');
   if (pc) pc.innerHTML = personal.map(mkItem).join('');
   if (cc) cc.innerHTML = company.map(mkItem).join('');
+
+  const pgc = document.getElementById('sidebarPrograms');
+  if (pgc) {
+    pgc.innerHTML = (APP.programs || []).map(pg => `
+      <button class="sidebar-item ${ROUTE.clientId===pg.id ? 'active' : ''}" data-nav="${pg.id}"
+        onclick="navigate('ciprogram','${pg.id}')">
+        <span class="si-icon" style="background:${pg.ci?.primary||'#5B63FE'};border-radius:5px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">${(pg.name||'P').charAt(0)}</span>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pg.name||'(kein Name)'}</span>
+        <span class="si-badge" style="background:rgba(91,99,254,0.2);color:#8B93FF;font-size:9px">${(pg.clientIds||[]).length}</span>
+      </button>`).join('');
+  }
 }
 
 // ══════════════════════════════════════════
 //  HOME
 // ══════════════════════════════════════════
 function renderHome(container) {
-  if (!APP.clients.length) {
-    container.innerHTML = `
-      <div class="content">
-        <div class="empty-state">
-          <div class="empty-icon">📊</div>
-          <div class="empty-title">Noch keine Kunden</div>
-          <div class="empty-sub">Erstelle deinen ersten Kunden und importiere LinkedIn-Daten.</div>
-          <button class="btn btn-primary" onclick="createNewClient()">＋ Ersten Kunden anlegen</button>
-        </div>
-      </div>`;
-    return;
-  }
+  const personal = APP.clients.filter(c => c.type !== 'company');
+  const company  = APP.clients.filter(c => c.type === 'company');
+  const programs = APP.programs || [];
 
-  const cards = APP.clients.map(c => {
+  function clientCard(c) {
     const ins = c.monthly ? analyze(c.monthly, c.splitLabel, c.ci.primary, c.posts, c.flopPosts, c.ci) : null;
     const status = !c.monthly ? 'empty' : 'ready';
-    const statusLabel = { empty:'Keine Daten', draft:'Entwurf', ready:'Dashboard bereit' }[status];
-    const statusClass = { empty:'status-empty', draft:'status-draft', ready:'status-ready' }[status];
-
+    const statusLabel = { empty:'Keine Daten', ready:'Dashboard bereit' }[status];
+    const statusClass = { empty:'status-empty', ready:'status-ready' }[status];
     return `
     <div class="client-card" onclick="navigate('dash','${c.id}')">
       <div class="client-card-stripe" style="background:${c.ci.primary}"></div>
@@ -1150,23 +1309,80 @@ function renderHome(container) {
         <span>${new Date(c.updatedAt).toLocaleDateString('de-DE')}</span>
       </div>
     </div>`;
-  }).join('');
+  }
 
-  container.innerHTML = `
-    <div class="content">
-      <div class="home-header">
+  function programCard(pg) {
+    const color   = pg.ci?.primary || '#5B63FE';
+    const members = pg.members || [];
+    const totalPosts = members.reduce((s,m)=>s+(m.posts?.length||0),0);
+    const totalImpr  = members.reduce((s,m)=>{
+      const mo = m.monthly; if (!mo) return s;
+      return s + (mo.impressions||[]).reduce((a,b)=>a+b,0);
+    },0);
+    const totalEng   = members.reduce((s,m)=>{
+      const mo = m.monthly; if (!mo) return s;
+      return s + (mo.engagements||[]).reduce((a,b)=>a+b,0);
+    },0);
+    const hasData = members.length > 0 || (pg.clientIds||[]).length > 0;
+    const status = hasData ? 'ready' : 'empty';
+    const statusLabel = hasData ? 'Dashboard bereit' : 'Keine Daten';
+    const statusClass = hasData ? 'status-ready' : 'status-empty';
+    const memberCount = members.length || (pg.clientIds||[]).length;
+    return `
+    <div class="client-card" onclick="navigate('ciprogram','${pg.id}')">
+      <div class="client-card-stripe" style="background:${color}"></div>
+      <div class="client-card-head">
+        <div class="client-card-logo" style="background:${color};color:${contrastColor(color)};font-size:18px">
+          📊
+        </div>
         <div>
-          <div class="home-title">Kundenprojekte</div>
-          <div class="home-sub">${APP.clients.length} Kunde${APP.clients.length!==1?'n':''} · klicke zum Öffnen</div>
+          <div class="client-card-name">${esc(pg.name || '(kein Name)')}</div>
+          <div class="client-card-period">${memberCount} Mitglied${memberCount!==1?'er':''}</div>
+        </div>
+      </div>
+      ${hasData && totalImpr > 0 ? `
+      <div class="client-card-kpis">
+        <div class="client-kpi"><div class="client-kpi-val">${fmtK(totalImpr)}</div><div class="client-kpi-label">Impressionen</div></div>
+        <div class="client-kpi"><div class="client-kpi-val">${fmtK(totalEng)}</div><div class="client-kpi-label">Engagements</div></div>
+        <div class="client-kpi"><div class="client-kpi-val">${totalPosts}</div><div class="client-kpi-label">Posts</div></div>
+      </div>` : `<div style="font-size:12px;color:var(--muted);padding:8px 0">${hasData ? 'Mitglieder verknüpft' : 'Noch keine Daten importiert'}</div>`}
+      <div class="client-card-footer">
+        <span class="client-status ${statusClass}">${statusLabel}</span>
+        <span>${pg.createdAt ? new Date(pg.createdAt).toLocaleDateString('de-DE') : '—'}</span>
+      </div>
+    </div>`;
+  }
+
+  function section(icon, title, subtitle, cards, addBtn) {
+    return `
+    <div style="margin-bottom:36px">
+      <div class="home-header" style="margin-bottom:16px">
+        <div>
+          <div class="home-title">${icon} ${title}</div>
+          <div class="home-sub">${subtitle}</div>
         </div>
       </div>
       <div class="clients-grid">
         ${cards}
-        <div class="new-client-card" onclick="createNewClient()">
-          <div class="new-client-icon">＋</div>
-          <div class="new-client-label">Neuen Kunden anlegen</div>
-        </div>
+        ${addBtn}
       </div>
+    </div>`;
+  }
+
+  container.innerHTML = `
+    <div class="content">
+      ${section('👤', 'Personal Branding',
+          `${personal.length} Profil${personal.length!==1?'e':''}`,
+          personal.map(clientCard).join(''),
+          `<div class="new-client-card" onclick="createNewClient()"><div class="new-client-icon">＋</div><div class="new-client-label">Neuen Kunden anlegen</div></div>`)}
+      ${section('🏢', 'Unternehmensseiten',
+          `${company.length} Seite${company.length!==1?'n':''}`,
+          company.map(clientCard).join(''),
+          `<div class="new-client-card" onclick="createNewCompanyClient()"><div class="new-client-icon">🏢</div><div class="new-client-label">Company Page anlegen</div></div>`)}
+      ${section('📊', 'CI-Programme',
+          `${programs.length} Programm${programs.length!==1?'e':''}`,
+          programs.map(programCard).join(''),
+          `<div class="new-client-card" onclick="createNewProgram()"><div class="new-client-icon">📊</div><div class="new-client-label">CI-Programm anlegen</div></div>`)}
     </div>`;
 }
 
@@ -1277,6 +1493,13 @@ function renderEdit(container) {
       <!-- Ziele -->
       <div class="edit-section" style="margin-top:14px">
         <div class="edit-section-title">🎯 Ziele <span style="font-size:11px;font-weight:400;color:var(--muted)">— optional, werden im Dashboard als Fortschritt angezeigt</span></div>
+        <div class="form-group" style="margin-bottom:12px">
+          <label class="form-label">📅 Ziele für Jahr</label>
+          <select class="form-input" id="goal_year" onchange="switchGoalYear(this.value,'${c.id}')" style="max-width:200px">
+            <option value="all">Gesamt (alle Jahre)</option>
+            ${(()=>{ const yrs=new Set(); (c.monthly?._sortKeys||c.monthly?.labels||[]).forEach(k=>{const y=k.slice(0,4);if(y.match(/^\d{4}$/))yrs.add(y);}); const now=new Date().getFullYear(); [now-1,now,now+1].forEach(y=>yrs.add(String(y))); return [...yrs].sort().map(y=>`<option value="${y}">${y}</option>`).join(''); })()}
+          </select>
+        </div>
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">🔭 Ziel Impressionen</label>
@@ -1546,15 +1769,31 @@ function liveEditCI() {
   c.ci.color2  = document.getElementById('ci_color2')?.value || primary;
   c.ci.color3  = document.getElementById('ci_color3')?.value || primary;
   c.ci.logo    = logo;
-  // Ziele speichern
+  // Ziele speichern (jahresweise)
   const gi = v => { const n = parseInt(document.getElementById(v)?.value); return n > 0 ? n : null; };
-  c.goals = {
-    impressions: gi('goal_impressions'),
-    followers:   gi('goal_followers'),
-    engagements: gi('goal_engagements'),
-    leads:       gi('goal_leads')
-  };
+  const goalYear = document.getElementById('goal_year')?.value || 'all';
+  const goalObj = { impressions: gi('goal_impressions'), followers: gi('goal_followers'), engagements: gi('goal_engagements'), leads: gi('goal_leads') };
+  if (!c.goalsByYear) c.goalsByYear = {};
+  c.goalsByYear[goalYear] = goalObj;
+  c.goals = c.goalsByYear['all'] || goalObj; // backward compat
   c.updatedAt  = Date.now();
+  saveApp();
+}
+
+function switchGoalYear(year, cid) {
+  const c = getClient(cid);
+  if (!c) return;
+  // First save current inputs into the previously selected year
+  const gi = v => { const n = parseInt(document.getElementById(v)?.value); return n > 0 ? n : null; };
+  const prevYear = document.getElementById('goal_year')?.value || 'all';
+  if (!c.goalsByYear) c.goalsByYear = {};
+  c.goalsByYear[prevYear] = { impressions: gi('goal_impressions'), followers: gi('goal_followers'), engagements: gi('goal_engagements'), leads: gi('goal_leads') };
+  // Load the new year's goals into inputs
+  const g = c.goalsByYear[year] || {};
+  ['impressions','followers','engagements','leads'].forEach(k => {
+    const el = document.getElementById('goal_'+k);
+    if (el) el.value = g[k] || '';
+  });
   saveApp();
   renderSidebar();
 }
@@ -1743,6 +1982,10 @@ function parseDate(val) {
   const liMon = s.match(/^([A-Za-zÄäÖöÜüß]+)\.?\s+(\d{4})/);
   if (liMon) { const mi = miFromStr(liMon[1]); if(mi>=0) return {year:+liMon[2], month:mi}; }
 
+  // RFC 2822 / Favikon: "Fri, 10 Oct 2025 07:00:30 GMT"
+  const rfc = s.match(/^[A-Za-z]+,\s+(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})/);
+  if (rfc) { const mi = miFromStr(rfc[2]); if(mi>=0) return {year:+rfc[3], month:mi, day:+rfc[1]}; }
+
   // Favikon: "16 Dec 25" or "16 Dec 2025" (DD Mon YY/YYYY)
   const fav = s.match(/^(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{2,4})$/);
   if (fav) { const mi = miFromStr(fav[2]); if(mi>=0) { const yr = fav[3].length===2 ? 2000+parseInt(fav[3]) : +fav[3]; return {year:yr, month:mi}; } }
@@ -1861,6 +2104,14 @@ function smartImport_collect(data, type, filename) {
         if (result) { result._filename = filename; _multiResults.push(result); return; }
         console.warn('[Upload] CompanyPage parse returned null, falling back');
       }
+      // ── LinkedIn Company Page Follower export (Neue Follower innen + Standort + ...)
+      const followerSheets = ['neue follower innen','neue follower:innen','neue followerinnen'];
+      if (wb.SheetNames.some(n => followerSheets.includes(n.toLowerCase()) || n.toLowerCase().includes('neue follower'))) {
+        console.log('[Upload] LinkedIn Company Page Follower export detected');
+        const result = parseLinkedInCompanyFollowers(wb);
+        if (result) { result._filename = filename; _multiResults.push(result); return; }
+        console.warn('[Upload] CompanyFollowers parse returned null, falling back');
+      }
       // ── LinkedIn AggregateAnalytics format detection (ENGAGEMENT, TOP POSTS, FOLLOWERS sheets)
       const liSheets = ['engagement','top posts','followers','discovery','top-beiträge','topbeiträge','follower_innen','followerinnen','follower innen','auffindbarkeit','demografische daten'];
       if (wb.SheetNames.some(n => liSheets.includes(n.toLowerCase()))) {
@@ -1870,6 +2121,23 @@ function smartImport_collect(data, type, filename) {
         if (result) { result._filename = filename; _multiResults.push(result); return; }
         console.warn('[Upload] AggregateAnalytics parse returned null, falling back');
       }
+      // ── Favikon CI Export format detection
+      {
+        const firstSheet = wb.Sheets[wb.SheetNames[0]];
+        if (firstSheet) {
+          const firstRows = XLSX.utils.sheet_to_json(firstSheet, { header:1, defval:'', raw:false });
+          if (firstRows.length > 0) {
+            const hStr = firstRows[0].map(v=>String(v).toUpperCase()).join(' ');
+            if (hStr.includes('CREATOR_NAME') || hStr.includes('EST. VIEWS') || hStr.includes('POSTED_AT')) {
+              console.log('[Upload] Favikon CI export detected');
+              const result = parseFavikonCI(wb);
+              if (result) { result._filename = filename; result._isFavikonCI = true; _multiResults.push(result); return; }
+              console.warn('[Upload] parseFavikonCI returned null, falling back');
+            }
+          }
+        }
+      }
+
       let bestRows=[], bestScore=-1;
       for (const name of wb.SheetNames) {
         const ws = wb.Sheets[name];
@@ -1895,6 +2163,195 @@ function smartImport_collect(data, type, filename) {
 function processDataFile(file) { handleMultiFiles([file]); }
 function smartImport_fromXLSX(buf) { _multiResults=[]; smartImport_collect(buf,'xlsx','datei'); finalizeMultiImport(); }
 
+// ── Favikon CI Export Parser
+function parseFavikonCI(wb) {
+  try {
+    // Find the sheet (any sheet name)
+    const sheetName = wb.SheetNames[0];
+    if (!sheetName) return null;
+    const ws = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:false });
+    if (!rows || rows.length < 2) return null;
+
+    // Find header row (first row with CREATOR or EST.VIEWS, up to row 5)
+    let hRowIdx = 0;
+    let hRow = [];
+    for (let i = 0; i < Math.min(5, rows.length); i++) {
+      const candidate = rows[i].map(v => String(v).trim().toUpperCase());
+      const str = candidate.join(' ');
+      if (str.includes('CREATOR') || (str.includes('EST') && str.includes('VIEW')) || str.includes('POSTED_AT')) {
+        hRow = candidate; hRowIdx = i; break;
+      }
+    }
+    const hasCreator = hRow.some(h => h.includes('CREATOR'));
+    const hasEst = hRow.some(h => (h.includes('EST') && h.includes('VIEW')) || h.includes('VIEW'));
+    if (!hasCreator && !hasEst) return null;
+
+    // Detect column positions — exact match first, then substring fallback
+    const colExact = (...names) => {
+      let i = hRow.findIndex(h => names.includes(h));
+      return i >= 0 ? i : -1;
+    };
+    const colContains = (...terms) => {
+      let i = hRow.findIndex(h => terms.some(t => h.includes(t)));
+      return i >= 0 ? i : -1;
+    };
+    // Prefer exact match; if not found fall back to contains
+    const colOf = (exact, ...fallback) => {
+      const e = colExact(...exact);
+      return e >= 0 ? e : colContains(...fallback);
+    };
+
+    const CI_URL        = colOf(['POST_URL','URL','LINK'],                              'POST_URL','URL','LINK');
+    const CI_PROF_URL   = colOf(['CREATOR_PROFILE_URL','PROFILE_URL','CREATOR_URL'],   'PROFILE_URL','CREATOR_URL','CREATOR_PROFILE');
+    const CI_NAME       = colOf(['CREATOR_NAME','CREATOR NAME'],  'CREATOR_NAME','CREATOR','AUTHOR','NAME');
+    const CI_CAPTION = colOf(['CAPTION','POST_TEXT','CONTENT','DESCRIPTION','POST','TEXT','BEITRAGSTEXT','NACHRICHT'],
+                              'CAPTION','TEXT','CONTENT','BEITRAG','NACHRICHT','POST');
+    const CI_TYPE    = colOf(['TYPE','POST_TYPE','FORMAT'],     'POST_TYPE','TYPE','FORMAT');
+    const CI_DATE    = colOf(['POSTED_AT','PUBLISHED_AT','DATE','DATUM'],  'POSTED_AT','PUBLISHED','CREATED','DATE','DATUM');
+    const CI_LIKES   = colOf(['LIKES','REACTIONS','REAKTIONEN'],           'LIKE','REACTION','REAKTION');
+    const CI_COMM    = colOf(['COMMENTS','COMMENT','KOMMENTARE'],          'COMMENT','KOMMENTAR');
+    const CI_SHARES  = colOf(['SHARES','REPOSTS','TEILEN'],                'SHARE','REPOST','TEIL');
+    const CI_ESTVIEW = colOf(['EST. VIEWS','EST.VIEWS','ESTIMATED VIEWS','IMPRESSIONS','IMPRESSIONEN'],
+                              'EST. VIEW','IMPRESSION','VIEW');
+    const CI_ENG     = colOf(['ENGAGEMENTS','ENGAGEMENT','INTERAKTIONEN'], 'ENGAGEMENT','INTERAKTION');
+
+    if (CI_NAME < 0) return null; // must have creator name column
+
+    console.log('[CI DEBUG] Header row:', hRow);
+    console.log('[CI DEBUG] Col indices: NAME='+CI_NAME+' DATE='+CI_DATE+' ESTVIEW='+CI_ESTVIEW+' ENG='+CI_ENG+' LIKES='+CI_LIKES);
+
+    // Parse each data row (skip header rows)
+    const dataRows = rows.slice(hRowIdx + 1).filter(r => CI_NAME >= 0 && r[CI_NAME]);
+    if (!dataRows.length) return null;
+
+    // Log first 3 data rows for debugging
+    console.log('[CI DEBUG] First 3 data rows:');
+    dataRows.slice(0,3).forEach((r,i) => {
+      console.log('  Row '+i+':', {
+        name: r[CI_NAME], date: r[CI_DATE], estview: r[CI_ESTVIEW],
+        eng: r[CI_ENG], likes: r[CI_LIKES], comm: r[CI_COMM]
+      });
+    });
+
+    // Group by creator
+    const creatorMap = {};
+    const profileUrlMap = {};   // name → LinkedIn profile URL
+    const allDates = [];
+
+    dataRows.forEach(r => {
+      const name = String(r[CI_NAME]||'').trim();
+      if (!name) return;
+      if (!creatorMap[name]) creatorMap[name] = [];
+
+      const dateRaw = r[CI_DATE];
+      const pd = parseDate(dateRaw);
+      let sortKey = null, label = null;
+      if (pd) {
+        const yr = pd.year, mo = pd.month; // mo is 0-based
+        sortKey = yr + '-' + String(mo + 1).padStart(2, '0');
+        const monthNames = ['Jan','Feb','Mrz','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+        label = monthNames[mo] + ' ' + String(yr).slice(-2);
+        allDates.push(new Date(Date.UTC(yr, mo, pd.day || 1)));
+      }
+
+      const likes    = parseNum(r[CI_LIKES]) || 0;
+      const comments = parseNum(r[CI_COMM])  || 0;
+      const shares   = parseNum(r[CI_SHARES])|| 0;
+      const engRaw   = parseNum(r[CI_ENG])   || 0;
+      const estView  = String(r[CI_ESTVIEW]||'').trim();
+      let impr = 0;
+      if (estView && estView.toUpperCase() !== 'N/A' && estView !== '') {
+        impr = parseNum(estView) || 0;
+      }
+      if (!impr) impr = likes + comments + shares;
+
+      const caption    = String(r[CI_CAPTION]||'').trim();
+      const url        = String(r[CI_URL]||'').trim();
+      const profileUrl = CI_PROF_URL >= 0 ? String(r[CI_PROF_URL]||'').trim() : '';
+      const type       = String(r[CI_TYPE]||'').trim();
+
+      if (!profileUrlMap[name] && profileUrl) profileUrlMap[name] = profileUrl;
+      creatorMap[name].push({ caption, label, sortKey, impr, eng: engRaw, likes, comments, shares, url, type });
+    });
+
+    // Compute date range label
+    let dateRange = '';
+    if (allDates.length) {
+      const minD = allDates.reduce((a,b) => a<b?a:b);
+      const maxD = allDates.reduce((a,b) => a>b?a:b);
+      const fmt2 = d => d.toLocaleDateString('de-DE', { month:'short', year:'2-digit', timeZone:'UTC' });
+      dateRange = fmt2(minD) + ' – ' + fmt2(maxD);
+    }
+
+    // Build per-member data
+    const members = Object.entries(creatorMap).map(([name, posts]) => {
+      // Aggregate monthly
+      const monthMap = {};
+      posts.forEach(p => {
+        if (!p.sortKey) return;
+        if (!monthMap[p.sortKey]) monthMap[p.sortKey] = { label: p.label, impr:0, eng:0, posts:0 };
+        monthMap[p.sortKey].impr  += p.impr;
+        monthMap[p.sortKey].eng   += p.eng;
+        monthMap[p.sortKey].posts += 1;
+      });
+      const sortedKeys = Object.keys(monthMap).sort();
+      const monthly = {
+        labels:        sortedKeys.map(k => monthMap[k].label || k),
+        _sortKeys:     sortedKeys,
+        impressions:   sortedKeys.map(k => monthMap[k].impr),
+        followers:     sortedKeys.map(() => 0),
+        engagements:   sortedKeys.map(k => monthMap[k].eng),
+        postsPerMonth: sortedKeys.map(k => monthMap[k].posts),
+        totalFollowers: 0
+      };
+      // All posts sorted by impr desc
+      const topPosts = [...posts].sort((a,b)=>(b.impr||0)-(a.impr||0));
+      return { name, monthly, posts: topPosts, profileUrl: profileUrlMap[name] || '' };
+    });
+
+    // All posts across all creators, sorted by impr desc
+    const allPosts = Object.entries(creatorMap)
+      .flatMap(([name, posts]) => posts.map(p => ({ ...p, _creatorName: name })))
+      .sort((a,b) => (b.impr||0) - (a.impr||0));
+
+    return { members, allPosts, dateRange };
+  } catch(e) {
+    console.error('[parseFavikonCI]', e);
+    return null;
+  }
+}
+
+// ── Import a Favikon xlsx into a CI program
+function importFavikonIntoProgram(input, programId) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type:'array', cellDates:false, raw:false });
+      const result = parseFavikonCI(wb);
+      if (!result || !result.members?.length) {
+        showToast('⚠️ Favikon-Export konnte nicht gelesen werden', 'warn');
+        return;
+      }
+      const pg = (APP.programs||[]).find(p=>p.id===programId);
+      if (!pg) return;
+      pg.members = result.members;
+      saveApp();
+      showToast(`✅ ${result.members.length} Personen importiert (${result.allPosts.length} Posts)`, 'ok');
+      // Auto-update shared blob if one exists
+      if (pg.ci?.shareBlobId) {
+        ciUpdateBlob(pg).then(() => showToast('🔗 Kunden-Link automatisch aktualisiert', 'ok'));
+      }
+      navigate('ciprogram', programId);
+    } catch(err) {
+      showToast('⚠️ Fehler beim Lesen der Datei: ' + err.message, 'warn');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
 // ── Extract readable caption from LinkedIn post URL slug
 function extractCaptionFromUrl(url) {
   if (!url) return '';
@@ -1913,113 +2370,239 @@ function extractCaptionFromUrl(url) {
 // ── LinkedIn Company Page Excel parser (Kennzahlen + Alle Beiträge)
 function parseLinkedInCompanyPage(wb) {
   try {
-    const getWs = name => {
-      const lower = name.toLowerCase().replace(/[\s_äöüß]/g, s => ({ä:'ae',ö:'oe',ü:'ue',ß:'ss',' ':''}[s]||s));
-      const match = wb.SheetNames.find(n => n.toLowerCase().replace(/[\s_äöüß]/g, s => ({ä:'ae',ö:'oe',ü:'ue',ß:'ss',' ':''}[s]||s)) === lower);
+    // Find sheet by partial name match (handles encoding differences)
+    const findWs = keyword => {
+      const kw = keyword.toLowerCase();
+      const match = wb.SheetNames.find(n => n.toLowerCase().includes(kw));
       return match ? wb.Sheets[match] : null;
     };
 
-    const kWs = getWs('kennzahlen');
-    const bWs = getWs('allebeitraege') || getWs('allegeiträge') || wb.Sheets[wb.SheetNames.find(n=>n.toLowerCase().includes('beitr'))];
-
-    if (!kWs) return null;
+    const kWs = findWs('kennzahl');
+    const bWs = findWs('beitr');
+    if (!kWs) { console.warn('[CompanyPage] no Kennzahlen sheet'); return null; }
 
     const kRows = XLSX.utils.sheet_to_json(kWs, {header:1, defval:'', raw:false});
-    // Row 0: description text, Row 1: headers, Row 2+: data
-    const hRow = kRows[1] || [];
-    const colIdx = name => hRow.findIndex(h => String(h).toLowerCase().includes(name.toLowerCase()));
 
-    const iDate    = 0;
-    const iImprOrg = colIdx('Impressions (organische');
-    const iImprTot = colIdx('Impressions (insgesamt)');
-    const iKlicks  = colIdx('Klicks (insgesamt)');
-    const iReakt   = colIdx('Reaktionen (insgesamt)');
-    const iKomm    = colIdx('Kommentare (insgesamt)');
-    const iShares  = colIdx('Direkt geteilte Beiträge (insgesamt)');
-    const iEngRate = colIdx('Engagement Rate (insgesamt)');
+    // Find header row dynamically — look for row containing 'Datum' and 'Impressions'
+    let hRowIdx = -1;
+    for (let i = 0; i < Math.min(5, kRows.length); i++) {
+      const rowStr = kRows[i].join(' ').toLowerCase();
+      if (rowStr.includes('datum') && rowStr.includes('impress')) { hRowIdx = i; break; }
+    }
+    if (hRowIdx === -1) { console.warn('[CompanyPage] header row not found'); return null; }
 
-    // Aggregate daily → monthly
+    const hRow = kRows[hRowIdx];
+    // Find columns by partial keyword match (avoids encoding issues with ä/ö/ü)
+    const colIdx = (...keywords) => hRow.findIndex(h => {
+      const hl = String(h).toLowerCase();
+      return keywords.every(kw => hl.includes(kw.toLowerCase()));
+    });
+
+    // Use "insgesamt" to find the totals columns, fall back to organic
+    const iImprTot = colIdx('impress','insgesamt') >= 0 ? colIdx('impress','insgesamt') : colIdx('impress','organis');
+    const iKlicks  = colIdx('klick','insgesamt') >= 0  ? colIdx('klick','insgesamt')  : colIdx('klick','organis');
+    const iReakt   = colIdx('reaktion','insgesamt') >= 0 ? colIdx('reaktion','insgesamt') : colIdx('reaktion');
+    const iKomm    = colIdx('kommentar','insgesamt') >= 0 ? colIdx('kommentar','insgesamt') : colIdx('kommentar');
+    const iShares  = colIdx('geteilt','insgesamt') >= 0 ? colIdx('geteilt','insgesamt') : colIdx('geteilt');
+    // Neue Follower: "Neue Follower (insgesamt)" or "Neue Follower (organisch)" or just "Neue Follower"
+    const iNewFoll = colIdx('neue','follower','insgesamt') >= 0 ? colIdx('neue','follower','insgesamt')
+                   : colIdx('neue','follower','organis') >= 0  ? colIdx('neue','follower','organis')
+                   : colIdx('neue','follower') >= 0            ? colIdx('neue','follower')
+                   : colIdx('new','follower');
+    // Total / cumulative followers: "Follower insgesamt" or "Alle Follower"
+    const iTotFoll = colIdx('follower','insgesamt') >= 0 && colIdx('follower','insgesamt') !== iNewFoll
+                   ? colIdx('follower','insgesamt') : -1;
+
+    console.log('[CompanyPage] cols: impr='+iImprTot+' klicks='+iKlicks+' reakt='+iReakt+' komm='+iKomm+' shares='+iShares+' newFoll='+iNewFoll+' totFoll='+iTotFoll);
+
+    // Aggregate daily rows → monthly
     const monthMap = new Map();
-    for (let i = 2; i < kRows.length; i++) {
+    let lastTotalFollowers = 0;
+    for (let i = hRowIdx + 1; i < kRows.length; i++) {
       const row = kRows[i];
-      const dateStr = String(row[iDate]||'').trim();
-      if (!dateStr) continue;
-      // Format: MM/DD/YYYY
-      const m = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-      if (!m) continue;
-      const month = parseInt(m[1])-1; // 0-based
-      const year  = parseInt(m[3]);
-      const key   = `${year}-${String(month+1).padStart(2,'0')}`;
-      if (!monthMap.has(key)) monthMap.set(key, {year, month, impr:0, klicks:0, reaktionen:0, kommentare:0, shares:0, engRateSum:0, engRateN:0});
+      const dateStr = String(row[0]||'').trim();
+      if (!dateStr || !dateStr.match(/\d{1,4}[\/\.\-]\d{1,2}/)) continue;
+
+      // Parse date: MM/DD/YYYY or DD.MM.YYYY or YYYY-MM-DD
+      let year = 0, month = 0;
+      const mUS = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);   // MM/DD/YYYY
+      const mDE = dateStr.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);   // DD.MM.YYYY
+      const mISO= dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);          // YYYY-MM-DD
+      if (mUS)  { month = parseInt(mUS[1])-1; year = parseInt(mUS[3]); }
+      else if (mDE) { month = parseInt(mDE[2])-1; year = parseInt(mDE[3]); }
+      else if (mISO){ month = parseInt(mISO[2])-1; year = parseInt(mISO[1]); }
+      else continue;
+
+      const key = `${year}-${String(month+1).padStart(2,'0')}`;
+      if (!monthMap.has(key)) monthMap.set(key, {year, month, impr:0, klicks:0, reaktionen:0, kommentare:0, shares:0, newFoll:0, totFoll:0, n:0});
       const mo = monthMap.get(key);
-      mo.impr        += parseNum(row[iImprTot]||row[iImprOrg]);
-      mo.klicks      += parseNum(row[iKlicks]);
-      mo.reaktionen  += parseNum(row[iReakt]);
-      mo.kommentare  += parseNum(row[iKomm]);
-      mo.shares      += parseNum(row[iShares]);
-      const er = parseFloat(String(row[iEngRate]||'0').replace(',','.'));
-      if (er > 0) { mo.engRateSum += er; mo.engRateN++; }
+      mo.impr       += parseNum(row[iImprTot]);
+      mo.klicks     += iKlicks  >= 0 ? parseNum(row[iKlicks])  : 0;
+      mo.reaktionen += iReakt   >= 0 ? parseNum(row[iReakt])   : 0;
+      mo.kommentare += iKomm    >= 0 ? parseNum(row[iKomm])    : 0;
+      mo.shares     += iShares  >= 0 ? parseNum(row[iShares])  : 0;
+      mo.newFoll    += iNewFoll >= 0 ? parseNum(row[iNewFoll]) : 0;
+      if (iTotFoll >= 0) {
+        const tf = parseNum(row[iTotFoll]);
+        if (tf > 0) { mo.totFoll = tf; lastTotalFollowers = tf; }
+      }
+      mo.n++;
     }
 
-    const sorted = [...monthMap.entries()].sort((a,b)=>a[0]<b[0]?-1:1);
-    if (!sorted.length) return null;
+    const sorted = [...monthMap.entries()].sort((a,b) => a[0] < b[0] ? -1 : 1);
+    if (!sorted.length) { console.warn('[CompanyPage] no months found'); return null; }
 
-    const labels      = sorted.map(([,m]) => fmtMonthLabel(m.year, m.month));
+    console.log('[CompanyPage] parsed', sorted.length, 'months, first month impr:', sorted[0][1].impr, 'newFoll:', sorted[0][1].newFoll);
+
+    const MONTHS_DE = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+    const mkLabel = (year, month) => MONTHS_DE[month] + ' ' + String(year).slice(2);
+
+    const _sortKeys   = sorted.map(([key]) => key);  // e.g. '2025-06' — used for merge dedup
+    const labels      = sorted.map(([,m]) => mkLabel(m.year, m.month));
     const impressions = sorted.map(([,m]) => m.impr);
-    const klicks      = sorted.map(([,m]) => m.klicks);
     const engagements = sorted.map(([,m]) => m.reaktionen + m.kommentare + m.shares);
-    const followers   = sorted.map(() => 0); // not in this export
+    // followers: from Kennzahlen column if available, else filled later from Beiträge sheet
+    const followers     = sorted.map(([,m]) => m.newFoll || 0);
+    const totalFollowers = lastTotalFollowers || 0;
     const postsPerMonth = sorted.map(() => 0);
 
-    const d = { labels, impressions, followers, engagements, postsPerMonth, totalFollowers: 0 };
+    const d = { labels, _sortKeys, impressions, followers, engagements, postsPerMonth, totalFollowers };
 
-    // Parse Alle Beiträge
+    // Parse "Alle Beiträge" sheet — posts, follower gain per month, posting frequency
     const autoPosts = [];
+    const followerPerMonth = new Map(); // key → new followers summed from posts
+    const postsPerMonthMap = new Map(); // key → post count
     if (bWs) {
       const bRows = XLSX.utils.sheet_to_json(bWs, {header:1, defval:'', raw:false});
-      const bHeader = bRows[1] || [];
-      const bCol = name => bHeader.findIndex(h => String(h).toLowerCase().includes(name.toLowerCase()));
-      const iTitel  = 0;
-      const iLink   = bCol('Link veröffent');
-      const iArt    = bCol('Art des Beitrags');
-      const iDate2  = bCol('Erstellt am');
-      const iImpr2  = bCol('Impressions');
-      const iKlick2 = bCol('Klicks');
-      const iCTR    = bCol('Klickrate');
-      const iLikes  = bCol('Likes');
-      const iComm2  = bCol('Kommentare');
-      const iShares2= bCol('Direkt');
-      const iEngR2  = bCol('Engagement Rate');
-      const iArtI   = bCol('Art des Inhalts');
-
-      for (let i = 2; i < bRows.length; i++) {
-        const row = bRows[i];
-        const caption = String(row[iTitel]||'').trim();
-        if (!caption) continue;
-        const url     = String(row[iLink]||'').trim();
-        const impr    = parseNum(row[iImpr2]);
-        const klick   = parseNum(row[iKlick2]);
-        const likes   = parseNum(row[iLikes]);
-        const comm    = parseNum(row[iComm2]);
-        const shr     = parseNum(row[iShares2]);
-        const eng     = likes + comm + shr;
-        const dateRaw = String(row[iDate2]||'').trim();
-        // date format: DD.MM.YYYY HH:mm or MM/DD/YYYY
-        let label = dateRaw.replace(/\s+\d+:\d+.*$/, '');
-
-        autoPosts.push({ caption: caption.slice(0, 200), label, url, impr, eng, likes, comments: comm, shares: shr, type: 'story' });
+      let bHIdx = -1;
+      for (let i = 0; i < Math.min(5, bRows.length); i++) {
+        const rs = bRows[i].join(' ').toLowerCase();
+        if (rs.includes('titel') || rs.includes('impressions') || rs.includes('link')) { bHIdx = i; break; }
       }
-      autoPosts.sort((a,b) => b.impr - a.impr);
+      if (bHIdx >= 0) {
+        const bH = bRows[bHIdx];
+        const bCol = (...kws) => bH.findIndex(h => kws.every(kw => String(h).toLowerCase().replace(':', '').includes(kw.toLowerCase())));
+        const iLink   = bCol('link');
+        const iDate2  = bCol('erstellt');
+        const iImpr2  = bCol('impressions');
+        const iLikes  = bCol('likes');
+        const iComm2  = bCol('kommentar');
+        const iShr2   = bCol('geteilt');
+        const iFoll2  = bCol('follower');
+
+        console.log('[CompanyPage Beiträge] cols: date='+iDate2+' impr='+iImpr2+' likes='+iLikes+' foll='+iFoll2);
+
+        for (let i = bHIdx + 1; i < bRows.length; i++) {
+          const row = bRows[i];
+          const caption = String(row[0]||'').trim();
+          if (!caption || caption.length < 5) continue;
+          const url   = iLink  >= 0 ? String(row[iLink]||'').trim()  : '';
+          const impr  = iImpr2 >= 0 ? parseNum(row[iImpr2]) : 0;
+          const likes = iLikes >= 0 ? parseNum(row[iLikes]) : 0;
+          const comm  = iComm2 >= 0 ? parseNum(row[iComm2]) : 0;
+          const shr   = iShr2  >= 0 ? parseNum(row[iShr2])  : 0;
+          const foll  = iFoll2 >= 0 ? parseNum(row[iFoll2]) : 0;
+          const rawDate = iDate2 >= 0 ? String(row[iDate2]||'').trim() : '';
+          const label = rawDate.replace(/\s+\d+:\d+.*$/, '');
+
+          // Parse date for monthly aggregation
+          let mKey = '';
+          const mUS2 = rawDate.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+          const mDE2 = rawDate.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+          const mISO2= rawDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          if (mUS2)       mKey = mUS2[3]+'-'+String(parseInt(mUS2[1])).padStart(2,'0');
+          else if (mDE2)  mKey = mDE2[3]+'-'+String(parseInt(mDE2[2])).padStart(2,'0');
+          else if (mISO2) mKey = mISO2[1]+'-'+mISO2[2];
+
+          if (mKey) {
+            followerPerMonth.set(mKey, (followerPerMonth.get(mKey)||0) + foll);
+            postsPerMonthMap.set(mKey, (postsPerMonthMap.get(mKey)||0) + 1);
+          }
+
+          autoPosts.push({ caption: caption.slice(0,200), label, url, impr, eng: likes+comm+shr, likes, comments: comm, shares: shr, type: 'story' });
+        }
+        autoPosts.sort((a,b) => b.impr - a.impr);
+      }
     }
 
-    return { d, mode: 'company', months: labels.length, totalRows: sorted.length, autoPosts: autoPosts.slice(0,10), autoFlopPosts: [], _isCompany: true };
+    // Fill followers and postsPerMonth into monthly arrays from Beiträge sheet
+    // (overrides the Kennzahlen-based zeros)
+    sorted.forEach(([key, mo]) => {
+      if (followerPerMonth.has(key)) mo.follFromPosts = followerPerMonth.get(key);
+      if (postsPerMonthMap.has(key)) mo.postCount = postsPerMonthMap.get(key);
+    });
+
+    // Apply follower + post counts from Beiträge sheet into d arrays
+    sorted.forEach(([key,], idx) => {
+      const mo = sorted[idx][1];
+      if (mo.follFromPosts) d.followers[idx] = mo.follFromPosts;
+      if (mo.postCount)     d.postsPerMonth[idx] = mo.postCount;
+    });
+    d.totalFollowers = d.followers.reduce((s,v)=>s+v,0) || lastTotalFollowers;
+
+    console.log('[CompanyPage] final followers:', d.followers, 'posts:', d.postsPerMonth);
+    return { d, mode:'company', months:labels.length, totalRows:sorted.length, autoPosts:autoPosts.slice(0,50), autoFlopPosts:autoPosts.slice(-10).reverse(), _isCompany:true };
   } catch(e) {
-    console.error('[parseLinkedInCompanyPage]', e);
+    console.error('[parseLinkedInCompanyPage]', e.message, e.stack);
     return null;
   }
 }
 
 // ── LinkedIn AggregateAnalytics Excel parser (EN + DE sheet names)
+function parseLinkedInCompanyFollowers(wb) {
+  try {
+    // Find the "Neue Follower innen" sheet (any variant)
+    const fWsName = wb.SheetNames.find(n => n.toLowerCase().includes('neue follower'));
+    if (!fWsName) return null;
+    const fWs = wb.Sheets[fWsName];
+    const fRows = XLSX.utils.sheet_to_json(fWs, {header:1, defval:'', raw:false});
+
+    // Row 0 = header (Datum | Follower:innen (Sponsored) | organisch | auto | insgesamt)
+    const hRow = fRows[0] || [];
+    const colIdx = kw => hRow.findIndex(h => String(h).toLowerCase().replace(/[:\s]/g,'').includes(kw.toLowerCase().replace(/[:\s]/g,'')));
+    const iDate = 0; // always first column
+    const iTotal = colIdx('insgesamt') >= 0 ? colIdx('insgesamt') : colIdx('organisch');
+
+    const monthMap = new Map();
+    for (let i = 1; i < fRows.length; i++) {
+      const row = fRows[i];
+      const dateStr = String(row[iDate]||'').trim();
+      if (!dateStr) continue;
+      let year = 0, month = 0;
+      const mUS = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      const mDE = dateStr.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+      const mISO= dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (mUS)       { month = parseInt(mUS[1])-1; year = parseInt(mUS[3]); }
+      else if (mDE)  { month = parseInt(mDE[2])-1; year = parseInt(mDE[3]); }
+      else if (mISO) { month = parseInt(mISO[2])-1; year = parseInt(mISO[1]); }
+      else continue;
+      const key = `${year}-${String(month+1).padStart(2,'0')}`;
+      if (!monthMap.has(key)) monthMap.set(key, {year, month, followers:0});
+      monthMap.get(key).followers += parseNum(row[iTotal]) || 0;
+    }
+
+    const sorted = [...monthMap.entries()].sort((a,b) => a[0]<b[0]?-1:1);
+    if (!sorted.length) return null;
+
+    const MONTHS_DE = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+    const mkLabel = (year, month) => MONTHS_DE[month] + ' ' + String(year).slice(2);
+
+    const labels   = sorted.map(([,m]) => mkLabel(m.year, m.month));
+    const _sortKeys = sorted.map(([key]) => key);
+    const followers = sorted.map(([,m]) => m.followers);
+    const zeros     = sorted.map(() => 0);
+    const totalFollowers = followers.reduce((s,v)=>s+v, 0);
+
+    console.log('[CompanyFollowers] parsed', sorted.length, 'months, total followers:', totalFollowers);
+
+    const d = { labels, _sortKeys, impressions: zeros, followers, engagements: zeros, postsPerMonth: zeros, totalFollowers };
+    return { d, mode:'company-followers', months:sorted.length, totalRows:sorted.length, autoPosts:[], autoFlopPosts:[], _isCompany:true };
+  } catch(e) {
+    console.error('[parseLinkedInCompanyFollowers]', e.message);
+    return null;
+  }
+}
+
 function parseLinkedInAggregateAnalytics(wb) {
   // Case-insensitiver Sheet-Lookup (LinkedIn ändert manchmal Groß/Kleinschreibung)
   const ws = name => {
@@ -2297,7 +2880,7 @@ function mergeImportResults(results) {
       const m = mergeMap.get(key);
       // Add impressions/engagements; for followers take the max (not cumulative)
       m.impressions   += (d.impressions[i]   || 0);
-      m.followers      = Math.max(m.followers, d.followers[i] || 0);
+      m.followers     += (d.followers[i]     || 0);
       m.engagements   += (d.engagements[i]   || 0);
       m.postsPerMonth += (d.postsPerMonth[i] || 0);
     });
@@ -2318,7 +2901,8 @@ function mergeImportResults(results) {
 
   const totalRows = results.reduce((s,r)=>s+r.totalRows,0);
   const modeLabel = results.map(r=>r._filename||r.mode).join(' + ');
-  return { d, mode:'merged', months:sorted.length, totalRows, autoPosts:allPosts, autoFlopPosts:allFlopPosts, _mergeLabel:modeLabel };
+  const _isCompany = results.some(r => r._isCompany);
+  return { d, mode:'merged', months:sorted.length, totalRows, autoPosts:allPosts, autoFlopPosts:allFlopPosts, _mergeLabel:modeLabel, _isCompany };
 }
 
 // ── Called when all files in queue are processed
@@ -2326,9 +2910,32 @@ function finalizeMultiImport() {
   resetUploadZone();
   if (!_multiResults.length) { showToast('Keine Daten erkannt — Format prüfen','warn'); return; }
 
+  // Handle Favikon CI export — do NOT route through normal client import
+  if (_multiResults.some(r => r._isFavikonCI)) {
+    const favikonResult = _multiResults.find(r => r._isFavikonCI);
+    window._pendingFavikonCI = favikonResult;
+    const personCount = favikonResult.members?.length || 0;
+    const postCount   = favikonResult.allPosts?.length || 0;
+    showToast(`✅ Favikon-Export erkannt — ${personCount} Personen, ${postCount} Posts. Bitte in ein CI-Programm importieren.`, 'ok');
+    // If currently in a CI program edit view, auto-import
+    if (ROUTE.view === 'ciprogramedit' && ROUTE.clientId) {
+      const pg = (APP.programs||[]).find(p=>p.id===ROUTE.clientId);
+      if (pg) {
+        pg.members = favikonResult.members;
+        saveApp();
+        showToast(`✅ ${personCount} Personen in „${pg.name}" importiert`, 'ok');
+        renderApp();
+      }
+    }
+    return;
+  }
+
+  // "company-followers" = only follower data, no impressions → safe to merge with existing
+  // "company" = full content file with impressions → replace existing (avoids old generic-parser data)
+  const isContentImport = _multiResults.some(r => r.mode === 'company');
   let finalResult;
-  if (_mergeMode) {
-    // Merge with already-saved client data (not _pendingImport which may be null)
+  if (_mergeMode && !isContentImport) {
+    // Merge with already-saved client data (personal profiles OR follower-only company files)
     const c = getClient(ROUTE.clientId);
     if (c && c.monthly && c.monthly.labels && c.monthly.labels.length) {
       const existingResult = {
@@ -2336,7 +2943,8 @@ function finalizeMultiImport() {
         autoPosts: c.posts || [],
         autoFlopPosts: c.flopPosts || [],
         totalRows: c.monthly.labels.length,
-        _filename: null
+        _filename: null,
+        _isCompany: c.type === 'company'
       };
       finalResult = mergeImportResults([existingResult, ..._multiResults]);
     } else {
@@ -2349,7 +2957,7 @@ function finalizeMultiImport() {
   if (!finalResult) { showToast('Zusammenführen fehlgeschlagen','warn'); return; }
 
   // Direkt speichern — sofort, kein extra Klick nötig
-  _pendingImport = { d: finalResult.d, autoPosts: finalResult.autoPosts || [], autoFlopPosts: finalResult.autoFlopPosts || [] };
+  _pendingImport = { d: finalResult.d, autoPosts: finalResult.autoPosts || [], autoFlopPosts: finalResult.autoFlopPosts || [], _isCompany: finalResult._isCompany || false };
   confirmImport();
 }
 
@@ -2414,6 +3022,7 @@ function showImportPreview(d, mode, months, totalRows, autoPosts, mergeLabel, au
 
 function confirmImport() {
   if (!_pendingImport) return;
+  if (ROUTE.view === 'ciprogramedit') return; // CI program context — never save to a client
   const { d, autoPosts, autoFlopPosts } = _pendingImport;
   console.log('[Import] confirmImport called, labels:', d?.labels?.length, d?.labels?.slice(0,3));
   const c = getClient(ROUTE.clientId);
@@ -3024,6 +3633,9 @@ function renderDash(container) {
   const ins = analyze(c.monthly, c.splitLabel, c.ci.primary, c.posts, c.flopPosts, c.ci);
   const p = ci.primary;
 
+  const mFiltered = filterMonthly(c.monthly, c.id);
+  const insFiltered = analyze(mFiltered, c.splitLabel, c.ci.primary, c.posts, c.flopPosts, c.ci);
+
   container.innerHTML = `
     <div class="dash-header" id="dashHdr" style="background:${p}">
       <div class="dh-logo">
@@ -3035,7 +3647,10 @@ function renderDash(container) {
           <div class="dh-period">${ci.person ? ci.person+' · ':''} ${ci.period}</div>
         </div>
       </div>
-      <span class="dh-badge">${ci.period}</span>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        ${renderDatePicker(c)}
+        <span class="dh-badge">${ci.period}</span>
+      </div>
     </div>
     <div class="dash-topbar">
       <button class="btn btn-sm" onclick="navigate('edit','${c.id}')">✏️ Bearbeiten</button>
@@ -3046,8 +3661,8 @@ function renderDash(container) {
     </div>
     <div class="dash-content" id="dashContent"></div>`;
 
-  document.getElementById('dashContent').innerHTML = buildDashHTML(c, ins);
-  setTimeout(() => renderCharts(c, ins), 60);
+  document.getElementById('dashContent').innerHTML = buildDashHTML({ ...c, monthly: mFiltered }, insFiltered);
+  setTimeout(() => renderCharts({ ...c, monthly: mFiltered }, insFiltered), 60);
 }
 
 function buildDashHTML(c, ins) {
@@ -3105,9 +3720,18 @@ function buildDashHTML(c, ins) {
     </div>
   </div>`;
 
-  // ── Ziele-Fortschritt
-  if (c.goals && Object.values(c.goals).some(v => v > 0)) {
-    const g = c.goals;
+  // ── Ziele-Fortschritt — wähle Ziele für aktiven Filterzeitraum
+  const _activeGoals = (() => {
+    const f = getFilter(c.id);
+    const gby = c.goalsByYear || {};
+    // Prefer the year matching the "from" filter, then "to" year, then 'all', then c.goals
+    if (f.from) { const y = f.from.slice(0,4); if (gby[y] && Object.values(gby[y]).some(v=>v>0)) return gby[y]; }
+    if (f.to)   { const y = f.to.slice(0,4);   if (gby[y] && Object.values(gby[y]).some(v=>v>0)) return gby[y]; }
+    if (gby['all'] && Object.values(gby['all']).some(v=>v>0)) return gby['all'];
+    return c.goals;
+  })();
+  if (_activeGoals && Object.values(_activeGoals).some(v => v > 0)) {
+    const g = _activeGoals;
     const monthly = c.monthly;
     // Kumulierte Werte berechnen + Monat des Erreichens finden
     const goalItems = [
@@ -3123,6 +3747,7 @@ function buildDashHTML(c, ins) {
     html += `<div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:1.25rem;box-shadow:var(--shadow)">
       <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px;display:flex;align-items:center;gap:8px">
         <span style="font-size:18px">🎯</span> Ziele & Fortschritt
+        ${(()=>{ const f=getFilter(c.id); const y=f.from?f.from.slice(0,4):null; return y?`<span style="background:#EEF0FF;color:#5B63FE;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600">${y}</span>`:''; })()}
       </div>
       <div style="display:flex;flex-direction:column;gap:14px">
         ${goalItems.map(item => {
@@ -3290,10 +3915,12 @@ function buildDashHTML(c, ins) {
     </div>
   </div>`;
 
-  if (c.posts?.length || c.flopPosts?.length) {
+  const _filteredPosts = filterPosts(c.posts, c.id);
+  const _filteredFlops = filterPosts(c.flopPosts, c.id);
+  if (_filteredPosts?.length || _filteredFlops?.length) {
     // Build top posts HTML
     let topPostsHTML = '';
-    if (c.posts?.length) {
+    if (_filteredPosts?.length) {
       topPostsHTML += `
       <div class="legend" style="margin-bottom:14px">
         <div class="legend-item"><div class="legend-dot" style="background:#00A86B"></div>Humor / Persönlich</div>
@@ -3303,7 +3930,7 @@ function buildDashHTML(c, ins) {
         <div class="legend-item"><div class="legend-dot" style="background:#FF6600"></div>Branchenwissen</div>
       </div>
       <div class="posts-list">`;
-      c.posts.forEach((post,i) => {
+      _filteredPosts.forEach((post,i) => { const _origIdx = (c.posts||[]).indexOf(post);
         const tm = TYPE_META[post.type]||{label:post.type||'Story',bg:'#F1EFEA',col:'#4A4A4A',bar:'#6B7A99'};
         const rc = i===0?'g':i===1?'s':i===2?'b':'';
         const metaParts = [];
@@ -3312,7 +3939,7 @@ function buildDashHTML(c, ins) {
         if (post.comments) metaParts.push('💬 '+post.comments.toLocaleString('de-DE'));
         if (post.shares) metaParts.push('🔁 '+post.shares.toLocaleString('de-DE'));
         if (post.eng && !post.likes) metaParts.push('⚡ '+post.eng.toLocaleString('de-DE')+' Engagements');
-        topPostsHTML += `<div class="post-row" onclick="openPostOverlay(${i})" style="cursor:pointer" title="Details anzeigen">
+        topPostsHTML += `<div class="post-row" onclick="openPostOverlay(${_origIdx >= 0 ? _origIdx : i})" style="cursor:pointer" title="Details anzeigen">
           <div class="post-rank ${rc}">#${i+1}</div>
           <div style="flex:1;min-width:0"><div class="post-cap">${post.caption||'—'}</div><div class="post-meta">${metaParts.join(' · ')}</div></div>
           <div class="post-pill" style="background:${tm.bg};color:${tm.col}">${tm.label}</div>
@@ -3327,9 +3954,9 @@ function buildDashHTML(c, ins) {
 
     // Build flop posts HTML
     let flopPostsHTML = '';
-    if (c.flopPosts?.length) {
+    if (_filteredFlops?.length) {
       flopPostsHTML += `<div class="posts-list">`;
-      c.flopPosts.forEach((post,i) => {
+      _filteredFlops.forEach((post,i) => { const _origFlopIdx = (c.flopPosts||[]).indexOf(post);
         const tm = TYPE_META[post.type]||{label:post.type||'Story',bg:'#F1EFEA',col:'#4A4A4A',bar:'#6B7A99'};
         const metaParts = [];
         if (post.label) metaParts.push(post.label);
@@ -3337,7 +3964,7 @@ function buildDashHTML(c, ins) {
         if (post.comments) metaParts.push('💬 '+post.comments.toLocaleString('de-DE'));
         if (post.shares) metaParts.push('🔁 '+post.shares.toLocaleString('de-DE'));
         if (post.eng && !post.likes) metaParts.push('⚡ '+post.eng.toLocaleString('de-DE')+' Engagements');
-        flopPostsHTML += `<div class="post-row" onclick="openFlopPostOverlay(${i})" style="cursor:pointer;opacity:0.85" title="Details anzeigen">
+        flopPostsHTML += `<div class="post-row" onclick="openFlopPostOverlay(${_origFlopIdx >= 0 ? _origFlopIdx : i})" style="cursor:pointer;opacity:0.85" title="Details anzeigen">
           <div class="post-rank" style="background:#FFF0F0;color:#C0392B;border-color:#F5C6CB">#${i+1}</div>
           <div style="flex:1;min-width:0"><div class="post-cap">${post.caption||'—'}</div><div class="post-meta">${metaParts.join(' · ')}</div></div>
           <div class="post-pill" style="background:${tm.bg};color:${tm.col}">${tm.label}</div>
@@ -3619,6 +4246,1402 @@ function createNewCompanyClient() {
   navigate('edit', c.id, 'ci');
 }
 
+// ══════════════════════════════════════════
+//  CI-PROGRAMME
+// ══════════════════════════════════════════
+function createNewProgram() {
+  const pg = {
+    id: 'prg_' + Date.now().toString(36) + Math.random().toString(36).slice(2,5),
+    name: 'Neues CI-Programm',
+    clientIds: [],
+    ci: { primary: '#5B63FE', accent: '#FFD100' },
+    createdAt: Date.now()
+  };
+  if (!APP.programs) APP.programs = [];
+  APP.programs.push(pg);
+  saveApp();
+  navigate('ciprogramedit', pg.id);
+}
+
+function askDeleteProgram(id) {
+  if (!confirm('CI-Programm wirklich löschen?')) return;
+  APP.programs = (APP.programs||[]).filter(p=>p.id!==id);
+  saveApp();
+  navigate('home');
+  showToast('CI-Programm gelöscht');
+}
+
+function renderCIProgramEdit(container) {
+  const pg = (APP.programs||[]).find(p=>p.id===ROUTE.clientId);
+  if (!pg) { navigate('home'); return; }
+  const step = ROUTE.step || 'ci';
+  const allClients = (APP.clients||[]);
+  const prim = pg.ci?.primary || '#5B63FE';
+  const acc  = pg.ci?.accent  || '#FFD100';
+  const hasData = (pg.members?.length || 0) > 0 || (pg.clientIds?.length || 0) > 0;
+
+  container.innerHTML = `
+  <div class="content">
+    <div class="edit-header">
+      <div class="edit-logo-preview" id="pgLogoPreview"
+        style="background:${prim};color:${contrastColor(prim)};font-size:20px">📊</div>
+      <div>
+        <div class="edit-client-name" id="pgNameDisplay">${esc(pg.name || 'Neues CI-Programm')}</div>
+        <div class="edit-client-sub">CI-Programm · ${(pg.members?.length||0)+(pg.clientIds?.length||0)} Mitglieder</div>
+      </div>
+    </div>
+
+    <div class="step-tabs">
+      <button class="step-tab ${step==='ci'?'active':pg.name?'done':''}" onclick="setCIProgramStep('ci')">
+        <span class="step-num">1</span> Einstellungen
+      </button>
+      <button class="step-tab ${step==='import'?'active':hasData?'done':''}" onclick="setCIProgramStep('import')">
+        <span class="step-num">2</span> Import
+      </button>
+    </div>
+
+    <!-- Step 1: Einstellungen -->
+    <div id="stepCIProgCI" style="${step==='ci'?'':'display:none'}">
+      <div class="edit-section">
+        <div class="edit-section-title">⚙️ Programm-Einstellungen</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Programmname *</label>
+            <input class="form-input" id="pgName" value="${esc(pg.name)}" placeholder="z.B. DFB Corporate Influencer" oninput="liveCIProgramCI()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Zeitraum (Anzeige)</label>
+            <input class="form-input" id="pgPeriod" value="${esc(pg.period||'')}" placeholder="Jan 2025 – Dez 2025">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Agenturname (Footer)</label>
+            <input class="form-input" id="pgAgency" value="${esc(pg.agency||'Branding People GmbH')}" placeholder="Branding People GmbH" oninput="liveCIProgramCI()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Beginn der Zusammenarbeit</label>
+            ${(()=>{
+              const sd = pg.ci?.startDate || '';
+              const sdY = sd.slice(0,4) || '';
+              const sdM = sd.slice(5,7) || '';
+              const years = [];
+              const cy = new Date().getFullYear();
+              for (let y = cy+1; y >= 2018; y--) years.push(y);
+              const months = ['01 Januar','02 Februar','03 März','04 April','05 Mai','06 Juni','07 Juli','08 August','09 September','10 Oktober','11 November','12 Dezember'];
+              return `<div style="display:flex;gap:8px">
+                <select id="pgStartYear" class="form-input" style="flex:1" onchange="syncPgStartDate()">
+                  <option value="">Jahr</option>
+                  ${years.map(y=>`<option value="${y}"${sdY==y?'selected':''}>${y}</option>`).join('')}
+                </select>
+                <select id="pgStartMonth" class="form-input" style="flex:1" onchange="syncPgStartDate()">
+                  <option value="">Monat</option>
+                  ${months.map((m,i)=>{const v=String(i+1).padStart(2,'0');return `<option value="${v}"${sdM==v?'selected':''}>${m}</option>`;}).join('')}
+                </select>
+                <input type="hidden" id="pgStartDate" value="${esc(sd)}">
+              </div>`;
+            })()}
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Für den „Seit Beginn"-Banner im Dashboard</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="edit-section" style="margin-top:14px">
+        <div class="edit-section-title">🎨 Corporate Design</div>
+        <!-- Schnellauswahl -->
+        <div style="margin-bottom:12px">
+          <label class="form-label" style="margin-bottom:6px">Schnellauswahl Farben</label>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${['#5B63FE','#0A66C2','#00A86B','#E03B3B','#F59E0B','#FF6600','#7B2FBE','#1A1A2E','#E91E8C','#00BCD4','#2ECC71','#F39C12','#34495E','#003087','#ffffff'].map(col=>`
+              <div onclick="applyColorSwatchCI('${col}')" title="${col}" style="width:26px;height:26px;background:${col};border-radius:5px;cursor:pointer;border:2px solid ${col==='#ffffff'?'#ddd':'transparent'};flex-shrink:0;transition:transform .1s" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'"></div>
+            `).join('')}
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Klick auf Farbe → auf aktiven Farbpicker anwenden</div>
+        </div>
+        <!-- Farbpicker -->
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Primärfarbe (Header)</label>
+            <input class="form-input" type="color" id="pgPrimary" value="${prim}" oninput="liveCIProgramCI()" onfocus="_activeColorPicker='pgPrimary'">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Akzentfarbe (Logo / Highlights)</label>
+            <input class="form-input" type="color" id="pgAccent" value="${acc}" oninput="liveCIProgramCI()" onfocus="_activeColorPicker='pgAccent'">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Diagrammfarbe 2 <span style="font-size:11px;color:var(--muted)">(Charts)</span></label>
+            <input class="form-input" type="color" id="pgColor2" value="${pg.ci?.color2||prim}" oninput="liveCIProgramCI()" onfocus="_activeColorPicker='pgColor2'">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Diagrammfarbe 3 <span style="font-size:11px;color:var(--muted)">(optional)</span></label>
+            <input class="form-input" type="color" id="pgColor3" value="${pg.ci?.color3||prim}" oninput="liveCIProgramCI()" onfocus="_activeColorPicker='pgColor3'">
+          </div>
+        </div>
+        <!-- Logo -->
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Logo-Buchstabe / Emoji</label>
+            <input class="form-input" id="pgLogo" value="${esc(pg.ci?.logo||'')}" placeholder="z.B. D oder 📊" maxlength="3" oninput="liveCIProgramCI()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Logo-Bild (optional)</label>
+            <input class="form-input" type="file" id="pgLogoImg" accept="image/*" onchange="handleCIProgramLogoUpload(this)" style="padding:5px">
+          </div>
+        </div>
+        <!-- Live-Vorschau -->
+        <div class="ci-bar" id="pgCIBar" style="background:${prim};color:${contrastColor(prim)}">
+          <div style="width:32px;height:32px;background:${acc};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${contrastColor(acc)};flex-shrink:0" id="pgCIBarLogo">${pg.ci?.logo||pg.name?.charAt(0)||'📊'}</div>
+          <span id="pgCIBarName" style="font-weight:600">${esc(pg.name||'Programmname')} · CI-Programm</span>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;margin-top:8px">
+        <button class="btn" onclick="navigate('home')">← Zurück</button>
+        <button class="btn btn-primary" onclick="saveCIProgramStep1()">Weiter → Import →</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Import -->
+    <div id="stepCIProgImport" style="${step==='import'?'':'display:none'}">
+      <div class="edit-section">
+        <div class="edit-section-title">📥 Favikon-Import</div>
+        <label for="xlsCIFile" style="display:block;border:3px dashed #5B63FE;border-radius:16px;background:linear-gradient(135deg,#F4F5FF,#ECEEFF);padding:2rem;text-align:center;cursor:pointer;transition:background .2s"
+          ondragover="event.preventDefault();this.style.background='#E8EAFF'"
+          ondragleave="this.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)'"
+          ondrop="event.preventDefault();this.style.background='linear-gradient(135deg,#F4F5FF,#ECEEFF)';if(event.dataTransfer.files.length){const inp=document.getElementById('xlsCIFile');const dt=new DataTransfer();[...event.dataTransfer.files].forEach(f=>dt.items.add(f));inp.files=dt.files;importFavikonIntoProgram(inp,'${pg.id}')}">
+          <div style="font-size:32px;margin-bottom:8px">📊</div>
+          <div style="font-size:14px;font-weight:700;color:#5B63FE;margin-bottom:4px">Favikon-Export hier ablegen oder klicken</div>
+          <div style="font-size:12px;color:var(--muted)">.xlsx — enthält CREATOR_NAME, EST. VIEWS, POSTED_AT</div>
+        </label>
+        <input type="file" id="xlsCIFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="importFavikonIntoProgram(this,'${pg.id}')">
+        ${pg.members?.length ? `<div style="margin-top:10px;padding:10px 14px;background:#E8F8F2;border-radius:8px;font-size:13px;color:#00624A;font-weight:600">✅ ${pg.members.length} Person${pg.members.length===1?'':'en'} importiert · ${pg.members.reduce((s,m)=>s+(m.posts?.length||0),0)} Posts</div>` : ''}
+
+        ${pg.members?.length ? `
+        <div style="margin-top:14px">
+          <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">LinkedIn-Profillinks der Teilnehmer</div>
+          ${pg.members.map((m,i) => `
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <div style="width:32px;height:32px;border-radius:50%;background:#5B63FE;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0">${(m.name||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase()}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:600;margin-bottom:3px">${esc(m.name)}</div>
+              <input class="form-input" style="font-size:12px;padding:5px 10px" placeholder="https://www.linkedin.com/in/..."
+                value="${esc(m.profileUrl||'')}"
+                oninput="ciSaveMemberProfileUrl(${i}, this.value)">
+            </div>
+          </div>`).join('')}
+        </div>` : ''}
+      </div>
+
+      ${allClients.length ? `
+      <div class="edit-section" style="margin-top:14px">
+        <div class="edit-section-title">👤 Verknüpfte Profile <span style="font-size:11px;font-weight:400;color:var(--muted)">— optional</span></div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Bestehende LinkedIn-Profile mit diesem CI-Programm verknüpfen</div>
+        ${allClients.map(c => `
+        <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;margin-bottom:4px;background:${(pg.clientIds||[]).includes(c.id)?'#F0F2FF':'#F8F9FF'};border:1.5px solid ${(pg.clientIds||[]).includes(c.id)?'#C7CAFF':'var(--border)'}">
+          <input type="checkbox" value="${c.id}" ${(pg.clientIds||[]).includes(c.id)?'checked':''}
+            onchange="toggleProgramMember('${pg.id}','${c.id}',this.checked)"
+            style="width:16px;height:16px;accent-color:#5B63FE">
+          <span style="width:28px;height:28px;border-radius:6px;background:${c.ci.primary};color:${contrastColor(c.ci.primary)};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${c.ci.logo?.charAt(0)||c.ci.client?.charAt(0)||'?'}</span>
+          <div>
+            <div style="font-size:13px;font-weight:600">${esc(c.ci.client||'(kein Name)')}</div>
+            <div style="font-size:11px;color:var(--muted)">${esc(c.ci.person||'')}${c.monthly?.labels?.length?' · '+c.monthly.labels.length+' Monate':' · Keine Daten'}</div>
+          </div>
+        </label>`).join('')}
+      </div>` : ''}
+
+      <div style="display:flex;justify-content:space-between;margin-top:8px">
+        <button class="btn" onclick="setCIProgramStep('ci')">← Zurück</button>
+        <button class="btn btn-primary" onclick="saveCIProgramStep2('${pg.id}')">${hasData ? 'Zum Dashboard →' : 'Speichern'}</button>
+      </div>
+    </div>
+
+  </div>`;
+}
+
+function setCIProgramStep(step) {
+  ROUTE.step = step;
+  const pg = (APP.programs||[]).find(p=>p.id===ROUTE.clientId);
+  if (!pg) return;
+  // Auto-save all step-1 fields before switching steps
+  const g2 = id => document.getElementById(id);
+  if (!pg.ci) pg.ci = {};
+  if (g2('pgName')      && g2('pgName').value.trim()) pg.name       = g2('pgName').value.trim();
+  if (g2('pgPrimary'))   pg.ci.primary   = g2('pgPrimary').value;
+  if (g2('pgAccent'))    pg.ci.accent    = g2('pgAccent').value;
+  if (g2('pgColor2'))    pg.ci.color2    = g2('pgColor2').value;
+  if (g2('pgColor3'))    pg.ci.color3    = g2('pgColor3').value;
+  if (g2('pgLogo'))      pg.ci.logo      = g2('pgLogo').value.trim();
+  if (g2('pgPeriod'))    pg.period       = g2('pgPeriod').value.trim();
+  if (g2('pgAgency'))    pg.agency       = g2('pgAgency').value.trim();
+  if (g2('pgStartDate')) pg.ci.startDate = g2('pgStartDate').value;
+  saveApp();
+  renderApp();
+}
+
+function liveCIProgramCI() {
+  const name  = document.getElementById('pgName')?.value || 'Neues CI-Programm';
+  const prim  = document.getElementById('pgPrimary')?.value || '#5B63FE';
+  const acc   = document.getElementById('pgAccent')?.value  || '#FFD100';
+  const logo  = document.getElementById('pgLogo')?.value    || name.charAt(0) || '📊';
+
+  const nameDisp = document.getElementById('pgNameDisplay');
+  if (nameDisp) nameDisp.textContent = name;
+
+  const preview = document.getElementById('pgLogoPreview');
+  if (preview) { preview.style.background = prim; preview.style.color = contrastColor(prim); }
+
+  const bar = document.getElementById('pgCIBar');
+  if (bar) { bar.style.background = prim; bar.style.color = contrastColor(prim); }
+
+  const barLogo = document.getElementById('pgCIBarLogo');
+  if (barLogo) { barLogo.style.background = acc; barLogo.style.color = contrastColor(acc); barLogo.textContent = logo; }
+
+  const barName = document.getElementById('pgCIBarName');
+  if (barName) barName.textContent = name + ' · CI-Programm';
+}
+
+function handleCIProgramLogoUpload(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const pg = (APP.programs||[]).find(p=>p.id===ROUTE.clientId);
+    if (!pg) return;
+    if (!pg.ci) pg.ci = {};
+    pg.ci.logoImg = e.target.result;
+    const barLogo = document.getElementById('pgCIBarLogo');
+    if (barLogo) barLogo.innerHTML = `<img src="${e.target.result}" style="width:28px;height:28px;border-radius:50%;object-fit:cover">`;
+    const headerLogo = document.getElementById('pgLogoPreview');
+    if (headerLogo) headerLogo.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function syncPgStartDate() {
+  const y = document.getElementById('pgStartYear')?.value || '';
+  const m = document.getElementById('pgStartMonth')?.value || '';
+  const hidden = document.getElementById('pgStartDate');
+  if (hidden) hidden.value = (y && m) ? y + '-' + m : '';
+}
+
+function applyColorSwatchCI(col) {
+  const picker = document.getElementById(_activeColorPicker || 'pgPrimary');
+  if (picker) { picker.value = col; picker.dispatchEvent(new Event('input')); }
+}
+
+function saveCIProgramStep1() {
+  const pg = (APP.programs||[]).find(p=>p.id===ROUTE.clientId);
+  if (!pg) return;
+  const nameEl = document.getElementById('pgName');
+  if (!nameEl?.value.trim()) { showToast('Bitte einen Programmnamen eingeben', 'warn'); return; }
+  pg.name = nameEl.value.trim();
+  if (!pg.ci) pg.ci = {};
+  const g = (id) => document.getElementById(id);
+  if (g('pgPrimary')) pg.ci.primary = g('pgPrimary').value;
+  if (g('pgAccent'))  pg.ci.accent  = g('pgAccent').value;
+  if (g('pgColor2'))  pg.ci.color2  = g('pgColor2').value;
+  if (g('pgColor3'))  pg.ci.color3  = g('pgColor3').value;
+  if (g('pgLogo'))    pg.ci.logo    = g('pgLogo').value.trim();
+  if (g('pgPeriod'))     pg.period        = g('pgPeriod').value.trim();
+  if (g('pgAgency'))     pg.agency        = g('pgAgency').value.trim();
+  if (g('pgStartDate'))  pg.ci.startDate  = g('pgStartDate').value;
+  saveApp();
+  setCIProgramStep('import');
+}
+
+function ciSaveMemberProfileUrl(idx, url) {
+  const pg = (APP.programs||[]).find(p=>p.id===ROUTE.clientId);
+  if (!pg || !pg.members?.[idx]) return;
+  pg.members[idx].profileUrl = url.trim();
+  saveApp();
+}
+
+function saveCIProgramStep2(pgId) {
+  const pg = (APP.programs||[]).find(p=>p.id===pgId);
+  if (!pg) return;
+  saveApp();
+  showToast('CI-Programm gespeichert', 'ok');
+  const hasData = (pg.members?.length||0) > 0 || (pg.clientIds?.length||0) > 0;
+  if (hasData) navigate('ciprogram', pgId);
+  else showToast('Noch keine Daten — bitte Favikon-Export importieren', 'warn');
+}
+
+function toggleProgramMember(pgId, clientId, checked) {
+  const pg = (APP.programs||[]).find(p=>p.id===pgId);
+  if (!pg) return;
+  if (!pg.clientIds) pg.clientIds = [];
+  if (checked && !pg.clientIds.includes(clientId)) pg.clientIds.push(clientId);
+  else if (!checked) pg.clientIds = pg.clientIds.filter(id=>id!==clientId);
+  // update label styling live
+  const label = event.target.closest('label');
+  if (label) {
+    label.style.background = checked ? '#F0F2FF' : '#F8F9FF';
+    label.style.border = `1.5px solid ${checked ? '#C7CAFF' : 'var(--border)'}`;
+  }
+}
+
+function saveCIProgramEdit(pgId) {
+  const pg = (APP.programs||[]).find(p=>p.id===pgId);
+  if (!pg) return;
+  if (!pg.ci) pg.ci = {};
+  const g = id => document.getElementById(id);
+  if (g('pgName'))      pg.name           = g('pgName').value.trim() || 'CI-Programm';
+  if (g('pgPrimary'))   pg.ci.primary     = g('pgPrimary').value;
+  if (g('pgAccent'))    pg.ci.accent      = g('pgAccent').value;
+  if (g('pgColor2'))    pg.ci.color2      = g('pgColor2').value;
+  if (g('pgColor3'))    pg.ci.color3      = g('pgColor3').value;
+  if (g('pgLogo'))      pg.ci.logo        = g('pgLogo').value.trim();
+  if (g('pgPeriod'))    pg.period         = g('pgPeriod').value.trim();
+  if (g('pgAgency'))    pg.agency         = g('pgAgency').value.trim();
+  if (g('pgStartDate')) pg.ci.startDate   = g('pgStartDate').value;
+  saveApp();
+  showToast('CI-Programm gespeichert', 'ok');
+  navigate('ciprogram', pgId);
+}
+
+function buildCIProgramData(program) {
+  const PALETTE = ['#0A66C2','#00A86B','#FF6600','#9B59B6','#E74C3C','#3498DB','#F39C12','#1ABC9C'];
+
+  // Source 1: Favikon-imported members
+  const favikonMembers = (program.members||[]).map((m,i) => ({
+    _id: 'fav_' + i,
+    name: m.name,
+    monthly: m.monthly,
+    posts: m.posts || [],
+    ci: { primary: PALETTE[i % PALETTE.length], person: m.name, client: m.name },
+    source: 'favikon'
+  }));
+
+  // Source 2: linked clients
+  const clientMembers = (program.clientIds||[]).map(id=>getClient(id)).filter(Boolean).map(c => ({
+    _id: c.id,
+    name: c.ci.person||c.ci.client||'?',
+    monthly: c.monthly,
+    posts: c.posts || [],
+    ci: c.ci,
+    source: 'client',
+    clientId: c.id
+  }));
+
+  const members = [...favikonMembers, ...clientMembers];
+
+  // Collect all unique sort keys across all members — only sane years (2019–2030)
+  const keySet = new Set();
+  const validKey = k => { const y = parseInt(String(k).slice(0,4)); return y >= 2019 && y <= 2030; };
+  members.forEach(m => {
+    if (m.monthly?._sortKeys) m.monthly._sortKeys.filter(validKey).forEach(k=>keySet.add(k));
+    else if (m.monthly?.labels) m.monthly.labels.filter(validKey).forEach(l=>keySet.add(l));
+  });
+  const allKeys = Array.from(keySet).sort();
+  // Build label map from first member that has that key
+  const labelMap = {};
+  members.forEach(m => {
+    if (!m.monthly) return;
+    const keys = m.monthly._sortKeys || m.monthly.labels;
+    keys.forEach((k,i) => { if (!labelMap[k]) labelMap[k] = m.monthly.labels[i]; });
+  });
+  const mergedLabels = allKeys.map(k=>labelMap[k]||k);
+
+  // Sum impressions/engagements/posts per month across members
+  const mergedImpr = allKeys.map(k => {
+    let s = 0;
+    members.forEach(m => {
+      if (!m.monthly) return;
+      const keys = m.monthly._sortKeys || m.monthly.labels;
+      const idx = keys.indexOf(k);
+      if (idx >= 0) s += m.monthly.impressions?.[idx]||0;
+    });
+    return s;
+  });
+  const mergedEng = allKeys.map(k => {
+    let s = 0;
+    members.forEach(m => {
+      if (!m.monthly) return;
+      const keys = m.monthly._sortKeys || m.monthly.labels;
+      const idx = keys.indexOf(k);
+      if (idx >= 0) s += m.monthly.engagements?.[idx]||0;
+    });
+    return s;
+  });
+  const mergedPosts = allKeys.map(k => {
+    let s = 0;
+    members.forEach(m => {
+      if (!m.monthly) return;
+      const keys = m.monthly._sortKeys || m.monthly.labels;
+      const idx = keys.indexOf(k);
+      if (idx >= 0) s += m.monthly.postsPerMonth?.[idx]||0;
+    });
+    return s;
+  });
+
+  const mergedMonthly = { labels: mergedLabels, _sortKeys: allKeys, impressions: mergedImpr, engagements: mergedEng, postsPerMonth: mergedPosts };
+  const allPosts = members.flatMap(m => (m.posts||[]).map(p=>({...p, _clientName: m.name, _clientColor: m.ci.primary}))).sort((a,b)=>(b.impr||0)-(a.impr||0));
+  const totalImpr = mergedImpr.reduce((a,b)=>a+b,0);
+  const totalEng  = mergedEng.reduce((a,b)=>a+b,0);
+  const totalPosts = mergedPosts.reduce((a,b)=>a+b,0);
+
+  // Per-member series for charts (filtered by DASH_FILTERS)
+  const memberSeries = members.map((m,i) => {
+    const mFiltered = filterMonthly(m.monthly||{labels:[],impressions:[],engagements:[],postsPerMonth:[],_sortKeys:[]}, program.id);
+    const filteredKeys = mFiltered._sortKeys || mFiltered.labels || [];
+    return {
+      name: m.name,
+      color: PALETTE[i % PALETTE.length],
+      clientId: m.clientId || m._id,
+      imprByKey: Object.fromEntries(filteredKeys.map((k,j)=>[k, mFiltered.impressions?.[j]||0])),
+      postsByKey: Object.fromEntries(filteredKeys.map((k,j)=>[k, mFiltered.postsPerMonth?.[j]||0])),
+      totalImpr: (mFiltered.impressions||[]).reduce((a,b)=>a+b,0),
+      totalEng:  (mFiltered.engagements||[]).reduce((a,b)=>a+b,0),
+      totalPosts:(mFiltered.postsPerMonth||[]).reduce((a,b)=>a+b,0),
+      allImpr:   (m.monthly?.impressions||[]).reduce((a,b)=>a+b,0),
+    };
+  });
+  return { members, mergedMonthly, allPosts, totalImpr, totalEng, totalPosts, memberSeries, allKeys, mergedLabels };
+}
+
+function ciRenderPostCards(posts) {
+  const prim = window._ciPrim || '#5B63FE';
+  const acc  = window._ciAcc  || '#FFD100';
+  const primLight = prim + '18';
+  return posts.map((p, i) => {
+    const initials = (p._memberName||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+    const engRate  = p.impr>0 ? ((p.eng||0)/p.impr*100).toFixed(2)+'%' : '—';
+    const preview  = (p.caption||'').slice(0,180);
+    const engGood  = p.impr>0 && (p.eng||0)/p.impr > 0.01;
+    return `<div class="ci-post-row" data-member="${esc(p._memberName)}" data-idx="${i}"
+      onclick="ciShowPostModal(${i})"
+      style="border:1.5px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;transition:box-shadow .15s,border-color .15s;background:#fff"
+      onmouseover="this.style.boxShadow='0 4px 18px rgba(0,0,0,0.10)';this.style.borderColor='${prim}'"
+      onmouseout="this.style.boxShadow='';this.style.borderColor='var(--border)'">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div style="width:40px;height:40px;border-radius:50%;background:${p._memberColor};color:${contrastColor(p._memberColor)};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">${initials}</div>
+        <div>
+          <div style="font-weight:700;font-size:13px;color:var(--text)">${esc(p._memberName)}</div>
+          ${p.label?`<div style="font-size:11px;color:var(--muted)">${esc(p.label)}</div>`:''}
+        </div>
+        <div style="margin-left:auto;font-size:11px;font-weight:700;background:${primLight};color:${prim};border-radius:20px;padding:3px 10px">#${i+1}</div>
+      </div>
+      <div style="font-size:13px;line-height:1.55;color:var(--text);margin-bottom:12px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">${esc(preview)}${(p.caption||'').length>180?'…':''}</div>
+      <div style="border-top:1px solid ${prim}22;margin-bottom:10px"></div>
+      <div style="display:flex;align-items:center;font-size:12px;color:var(--muted)">
+        <div style="display:flex;align-items:center;gap:5px;flex:1"><span style="font-size:16px">👁</span><div><div style="font-weight:700;font-size:13px;color:${prim}">${fmtK(p.impr||0)}</div><div style="font-size:10px">Impressionen</div></div></div>
+        <div style="width:1px;height:30px;background:${prim}22;margin:0 8px"></div>
+        <div style="display:flex;align-items:center;gap:5px;flex:1"><span style="font-size:16px">👍</span><div><div style="font-weight:700;font-size:13px;color:var(--text)">${fmtK(p.likes||0)}</div><div style="font-size:10px">Likes</div></div></div>
+        <div style="width:1px;height:30px;background:${prim}22;margin:0 8px"></div>
+        <div style="display:flex;align-items:center;gap:5px;flex:1"><span style="font-size:16px">💬</span><div><div style="font-weight:700;font-size:13px;color:var(--text)">${fmtK(p.comments||0)}</div><div style="font-size:10px">Kommentare</div></div></div>
+        <div style="width:1px;height:30px;background:${prim}22;margin:0 8px"></div>
+        <div style="display:flex;align-items:center;gap:5px;flex:1"><span style="font-size:16px">🔁</span><div><div style="font-weight:700;font-size:13px;color:var(--text)">${fmtK(p.shares||0)}</div><div style="font-size:10px">Shares</div></div></div>
+        <div style="width:1px;height:30px;background:${prim}22;margin:0 8px"></div>
+        <div style="display:flex;align-items:center;gap:5px;flex:1"><span style="font-size:16px">📈</span><div><div style="font-weight:700;font-size:13px;color:${engGood?'var(--success)':prim}">${engRate}</div><div style="font-size:10px">Eng-Rate</div></div></div>
+        ${p.url?`<a href="${p.url}" target="_blank" onclick="event.stopPropagation()" style="margin-left:auto;display:flex;align-items:center;gap:4px;padding:6px 12px;background:${prim};color:${contrastColor(prim)};border-radius:20px;text-decoration:none;font-size:12px;font-weight:600;flex-shrink:0">↗ LinkedIn</a>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderCIProgramDash(container) {
+  const pg = (APP.programs||[]).find(p=>p.id===ROUTE.clientId);
+  if (!pg) { navigate('home'); return; }
+  const members = pg.members || [];
+  if (!members.length && !(pg.clientIds?.length)) {
+    container.innerHTML = `<div class="content" style="max-width:520px"><div class="card" style="padding:32px;text-align:center">
+      <div style="font-size:40px;margin-bottom:12px">📊</div>
+      <div style="font-weight:700;font-size:17px;margin-bottom:8px">${esc(pg.name)}</div>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:20px">Noch keine Daten vorhanden.</div>
+      <button class="btn btn-primary" onclick="navigate('ciprogramedit','${pg.id}')">⚙️ Importieren</button>
+    </div></div>`; return;
+  }
+
+  const prim = pg.ci?.primary || '#5B63FE';
+  const acc  = pg.ci?.accent  || '#FFD100';
+  const primLight = prim + '18';
+  // Member palette: start with prim/acc, then fixed contrast colors
+  const PALETTE = [prim, acc, '#00A86B','#FF6600','#9B59B6','#E74C3C','#3498DB','#F39C12'].filter((c,i,a)=>a.indexOf(c)===i);
+  window._ciPrim = prim; window._ciAcc = acc;
+
+  // ── Build merged month keys directly from pg.members
+  const keySet = new Set();
+  const labelMap = {};
+  members.forEach(m => {
+    const sk = m.monthly?._sortKeys || [];
+    const lb = m.monthly?.labels || [];
+    sk.forEach((k,i) => { keySet.add(k); if (!labelMap[k]) labelMap[k] = lb[i] || k; });
+  });
+  const allKeys = Array.from(keySet).sort();
+  const allLabels = allKeys.map(k => labelMap[k] || k);
+
+  // ── Per-member stats
+  const memberStats = members.map((m, i) => {
+    const sk = m.monthly?._sortKeys || [];
+    const imprArr = m.monthly?.impressions || [];
+    const engArr  = m.monthly?.engagements || [];
+    const postArr = m.monthly?.postsPerMonth || [];
+    const byKey = {};
+    sk.forEach((k, j) => { byKey[k] = { impr: imprArr[j]||0, eng: engArr[j]||0, posts: postArr[j]||0 }; });
+    const totalImpr  = imprArr.reduce((a,b)=>a+b,0);
+    const totalEng   = engArr.reduce((a,b)=>a+b,0);
+    const totalPosts = postArr.reduce((a,b)=>a+b,0);
+    const allPostsList = (m.posts||[]).map(p=>({...p, _memberName:m.name, _memberColor:PALETTE[i%PALETTE.length], _memberProfileUrl:m.profileUrl||''}));
+    return { name:m.name, color:PALETTE[i%PALETTE.length], id:'fav_'+i,
+      byKey, totalImpr, totalEng, totalPosts,
+      engRate: totalImpr>0 ? totalEng/totalImpr*100 : 0,
+      posts: allPostsList };
+  });
+
+  // ── Merged totals
+  const totalImpr  = memberStats.reduce((a,s)=>a+s.totalImpr,0);
+  const totalEng   = memberStats.reduce((a,s)=>a+s.totalEng,0);
+  const totalPosts = memberStats.reduce((a,s)=>a+s.totalPosts,0);
+  const nMonths = allKeys.length || 1;
+
+  // ── Top posts across all members
+  const allTopPosts = memberStats.flatMap(s=>s.posts).sort((a,b)=>(b.impr||0)-(a.impr||0));
+
+  // ── Ranking
+  const ranking = [...memberStats].sort((a,b)=>b.totalImpr-a.totalImpr);
+
+  container.innerHTML = `
+  <div class="dash-header" id="dashHdr" style="background:${prim}">
+    <div class="dh-logo">
+      <div class="dh-logomark" style="background:${acc};color:${contrastColor(acc)};font-size:18px">📊</div>
+      <div>
+        <div class="dh-name">${esc(pg.name)} · CI-Programm</div>
+        <div class="dh-period">${members.length} Teilnehmer · LinkedIn Analytics</div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-topbar">
+    <button class="btn btn-sm" onclick="navigate('ciprogramedit','${pg.id}')">✏️ Bearbeiten</button>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <button class="btn btn-sm" onclick="window.print()">🖨️ PDF</button>
+      <button class="btn btn-sm" onclick="copyCIShareLink('${pg.id}')" style="background:#00A86B;color:#fff;border-color:#00A86B">🔗 Kunden-Link</button>
+      <button class="btn btn-primary btn-sm" onclick="saveAsHTML()">💾 HTML speichern</button>
+    </div>
+  </div>
+  <div class="dash-content">
+
+    <!-- ── Zeitraum-Banner (aktualisiert sich mit Filterauswahl) ── -->
+    <div id="ciSummaryBanner" style="background:${prim};border-radius:14px;padding:20px 24px;margin-bottom:.75rem;color:${contrastColor(prim)}">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="font-size:28px">📊</div>
+          <div>
+            <div style="font-weight:700;font-size:16px">${esc(pg.name)}</div>
+            <div id="ciBannerPeriod" style="font-size:12px;opacity:.8;margin-top:2px">${allLabels[0]||''} – ${allLabels[allLabels.length-1]||''} · ${allKeys.length} Monate</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div id="ciBannerImpr" style="background:rgba(255,255,255,.18);border-radius:10px;padding:10px 18px;text-align:center;min-width:90px">
+            <div style="font-size:20px;font-weight:800">${fmtK(totalImpr)}</div>
+            <div style="font-size:10px;opacity:.8;margin-top:2px;text-transform:uppercase;letter-spacing:.5px">Impressionen</div>
+          </div>
+          <div id="ciBannerEng" style="background:rgba(255,255,255,.18);border-radius:10px;padding:10px 18px;text-align:center;min-width:90px">
+            <div style="font-size:20px;font-weight:800">${fmtK(totalEng)}</div>
+            <div style="font-size:10px;opacity:.8;margin-top:2px;text-transform:uppercase;letter-spacing:.5px">Engagements</div>
+          </div>
+          <div id="ciBannerPosts" style="background:rgba(255,255,255,.18);border-radius:10px;padding:10px 18px;text-align:center;min-width:80px">
+            <div style="font-size:20px;font-weight:800">${fmt(totalPosts)}</div>
+            <div style="font-size:10px;opacity:.8;margin-top:2px;text-transform:uppercase;letter-spacing:.5px">Beiträge</div>
+          </div>
+          <div id="ciBannerEngRate" style="background:rgba(255,255,255,.18);border-radius:10px;padding:10px 18px;text-align:center;min-width:80px">
+            <div style="font-size:20px;font-weight:800">${totalImpr>0?(totalEng/totalImpr*100).toFixed(2)+'%':'—'}</div>
+            <div style="font-size:10px;opacity:.8;margin-top:2px;text-transform:uppercase;letter-spacing:.5px">Eng-Rate</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Seit Beginn der Zusammenarbeit Banner ── -->
+    ${(()=>{
+      const startDate = pg.ci?.startDate || '';
+      const sbColor   = acc;
+      const sbContr   = contrastColor(acc);
+
+      // All months since collaboration start
+      const sbKeys = startDate ? allKeys.filter(k => k >= startDate) : [...allKeys];
+
+      // Totals over the full collaboration period
+      const sumField = (keys, field) => keys.reduce((a,k) => a + memberStats.reduce((b,s) => b+(s.byKey[k]?.[field]||0),0), 0);
+      const sbImpr  = sumField(sbKeys, 'impr');
+      const sbEng   = sumField(sbKeys, 'eng');
+      const sbPosts = sumField(sbKeys, 'posts');
+      const sbRate  = sbImpr>0 ? (sbEng/sbImpr*100).toFixed(2)+'%' : '—';
+
+      // Growth: compare first half vs second half of collaboration period
+      const half = Math.max(1, Math.floor(sbKeys.length / 2));
+      const kFirst = sbKeys.slice(0, half);
+      const kLast  = sbKeys.slice(half);
+      const growPct = (a, b) => {
+        if (!kLast.length || a === 0) return null;
+        return Math.round((b - a) / a * 100);
+      };
+      const gi = growPct(sumField(kFirst,'impr'),  sumField(kLast,'impr'));
+      const ge = growPct(sumField(kFirst,'eng'),   sumField(kLast,'eng'));
+      const gp = growPct(sumField(kFirst,'posts'), sumField(kLast,'posts'));
+
+      const badge = (g) => {
+        if (g === null || sbKeys.length < 2) return '';
+        const pos = g >= 0;
+        return `<div style="font-size:9px;margin-top:3px;font-weight:700;opacity:.9">${pos?'+':''}${g}%</div>`;
+      };
+
+      const startLabel = sbKeys.length > 0
+        ? (allLabels[allKeys.indexOf(sbKeys[0])] || sbKeys[0])
+        : '';
+      const endLabel = sbKeys.length > 0
+        ? (allLabels[allKeys.indexOf(sbKeys[sbKeys.length-1])] || sbKeys[sbKeys.length-1])
+        : '';
+
+      return `
+      <div id="ciSeitBeginnBanner" style="background:${sbColor};border-radius:12px;padding:12px 20px;margin-bottom:1.5rem;color:${sbContr}">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:18px">🤝</div>
+            <div>
+              <div style="font-weight:700;font-size:13px">Seit Beginn der Zusammenarbeit</div>
+              <div style="font-size:11px;opacity:.75;margin-top:2px">${startDate
+                ? (startLabel ? startLabel + ' – ' + endLabel : startDate) + ' · ' + sbKeys.length + ' Monate'
+                : 'Startdatum in den Einstellungen hinterlegen'}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <div style="background:rgba(255,255,255,.2);border-radius:8px;padding:6px 14px;text-align:center;min-width:80px">
+              <div style="font-size:15px;font-weight:800">${fmtK(sbImpr)}</div>
+              <div style="font-size:9px;opacity:.8;text-transform:uppercase;letter-spacing:.5px">Impressionen</div>
+              ${badge(gi)}
+            </div>
+            <div style="background:rgba(255,255,255,.2);border-radius:8px;padding:6px 14px;text-align:center;min-width:80px">
+              <div style="font-size:15px;font-weight:800">${fmtK(sbEng)}</div>
+              <div style="font-size:9px;opacity:.8;text-transform:uppercase;letter-spacing:.5px">Engagements</div>
+              ${badge(ge)}
+            </div>
+            <div style="background:rgba(255,255,255,.2);border-radius:8px;padding:6px 14px;text-align:center;min-width:70px">
+              <div style="font-size:15px;font-weight:800">${fmt(sbPosts)}</div>
+              <div style="font-size:9px;opacity:.8;text-transform:uppercase;letter-spacing:.5px">Beiträge</div>
+              ${badge(gp)}
+            </div>
+            <div style="background:rgba(255,255,255,.2);border-radius:8px;padding:6px 14px;text-align:center;min-width:70px">
+              <div style="font-size:15px;font-weight:800">${sbRate}</div>
+              <div style="font-size:9px;opacity:.8;text-transform:uppercase;letter-spacing:.5px">Eng-Rate</div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    })()}
+
+    <div class="kpi-grid" style="margin-bottom:1.5rem">
+      <div class="kpi-card" style="--k-accent:${prim}">
+        <div class="kpi-lbl">Teilnehmer</div><div class="kpi-val">${members.length}</div>
+        <div class="kpi-sub">Personen im Programm</div>
+      </div>
+      <div class="kpi-card" style="--k-accent:${prim}">
+        <div class="kpi-lbl">Impressionen gesamt</div>
+        <div class="kpi-val" id="ciKpiImpr">${fmt(totalImpr)}</div>
+        <div class="kpi-sub" id="ciKpiImprSub">Ø ${fmtK(Math.round(totalImpr/nMonths))} / Monat</div>
+      </div>
+      <div class="kpi-card" style="--k-accent:${acc}">
+        <div class="kpi-lbl">Engagements gesamt</div>
+        <div class="kpi-val" id="ciKpiEng">${fmt(totalEng)}</div>
+        <div class="kpi-sub" id="ciKpiEngSub">${totalImpr>0?(totalEng/totalImpr*100).toFixed(2)+'% Ø Eng-Rate':'—'}</div>
+      </div>
+      <div class="kpi-card" style="--k-accent:${prim}">
+        <div class="kpi-lbl">Beiträge gesamt</div>
+        <div class="kpi-val" id="ciKpiPosts">${fmt(totalPosts)}</div>
+        <div class="kpi-sub" id="ciKpiPostsSub">Ø ${(totalPosts/nMonths).toFixed(1)} / Monat</div>
+      </div>
+    </div>
+
+    <!-- Dropdown filter + chart section -->
+    <div class="card" style="padding:20px;margin-bottom:1.5rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+        <div style="font-weight:700;font-size:15px">📊 Entwicklung über Zeit</div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+            ${['all','12','6','3'].map((v,i) => {
+              const labels = ['Alle','12M','6M','3M'];
+              const active = i===0;
+              return `<button id="ciZBtn_${v}" onclick="ciSetZeitraum('${v}',this)"
+                style="padding:5px 14px;border-radius:20px;border:1.5px solid ${prim};font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;
+                background:${active?prim:'transparent'};color:${active?contrastColor(prim):prim}">${labels[i]}</button>`;
+            }).join('')}
+            <button id="ciZBtn_custom" onclick="ciSetZeitraum('custom',this)"
+              style="padding:5px 14px;border-radius:20px;border:1.5px solid ${prim};background:transparent;color:${prim};font-size:12px;font-weight:600;cursor:pointer;transition:all .15s">↔ Individuell</button>
+          </div>
+          <div id="ciZeitraumCustom" style="display:none;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">
+            <label style="font-size:12px;font-weight:600;color:var(--muted)">Von:</label>
+            <input type="month" id="ciZeitraumVon" min="${allKeys[0]||''}" max="${allKeys[allKeys.length-1]||''}" value="${allKeys[0]||''}"
+              onchange="ciFilterZeitraumRange()"
+              style="padding:5px 10px;border-radius:8px;border:1.5px solid ${prim};background:#fff;font-size:13px;font-weight:500;cursor:pointer">
+            <label style="font-size:12px;font-weight:600;color:var(--muted)">Bis:</label>
+            <input type="month" id="ciZeitraumBis" min="${allKeys[0]||''}" max="${allKeys[allKeys.length-1]||''}" value="${allKeys[allKeys.length-1]||''}"
+              onchange="ciFilterZeitraumRange()"
+              style="padding:5px 10px;border-radius:8px;border:1.5px solid ${prim};background:#fff;font-size:13px;font-weight:500;cursor:pointer">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="font-size:12px;font-weight:600;color:var(--muted)">Person:</label>
+            <select id="ciMemberSelect" onchange="ciSelectMember(this.value)"
+              style="padding:6px 12px;border-radius:8px;border:1.5px solid ${prim};background:#fff;font-size:13px;font-weight:500;cursor:pointer;min-width:180px;color:${prim}">
+              <option value="">— Alle Teilnehmer —</option>
+              ${memberStats.map((s,i)=>`<option value="${i}" style="color:var(--text)">${esc(s.name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Impressionen</div>
+          <div style="position:relative;height:220px"><canvas id="cCIImpr"></canvas></div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Engagements</div>
+          <div style="position:relative;height:220px"><canvas id="cCIEng"></canvas></div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Beiträge pro Monat</div>
+          <div style="position:relative;height:220px"><canvas id="cCIPosts"></canvas></div>
+        </div>
+      </div>
+      <!-- Color legend -->
+      <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)" id="ciChartLegend">
+        <span style="font-size:11px;font-weight:600;color:${prim};display:flex;align-items:center;gap:4px">
+          <span style="display:inline-block;width:24px;height:2px;background:${prim};border-top:2px dashed ${prim}"></span>Gesamt
+        </span>
+        ${memberStats.map(s=>`<span style="font-size:11px;font-weight:600;color:${s.color};display:flex;align-items:center;gap:4px">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${s.color}"></span>${esc(s.name)}
+        </span>`).join('')}
+      </div>
+    </div>
+
+    <!-- Person KPI summary — shown when a member is selected -->
+    <div id="ciPersonKPI" style="display:none;margin-bottom:1.5rem"></div>
+
+    <div class="card" style="padding:20px;margin-bottom:1.5rem">
+      <div style="font-weight:700;font-size:14px;margin-bottom:14px;color:${prim}">🏆 Influencer-Ranking</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="border-bottom:2px solid ${prim}22">
+          <th style="text-align:left;padding:8px 6px;color:${prim};font-weight:600">#</th>
+          <th style="text-align:left;padding:8px 6px;color:${prim};font-weight:600">Person</th>
+          <th style="text-align:right;padding:8px 6px;color:${prim};font-weight:600">Beiträge</th>
+          <th style="text-align:right;padding:8px 6px;color:${prim};font-weight:600">Impressionen</th>
+          <th style="text-align:right;padding:8px 6px;color:${prim};font-weight:600">Engagements</th>
+          <th style="text-align:right;padding:8px 6px;color:${prim};font-weight:600">Ø Eng-Rate</th>
+        </tr></thead>
+        <tbody>
+          ${ranking.map((s,i)=>`
+          <tr style="border-bottom:1px solid var(--border);transition:background .12s" onmouseover="this.style.background='${primLight}'" onmouseout="this.style.background=''">
+            <td style="padding:10px 6px">
+              <span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:${i===0?acc:primLight};color:${i===0?contrastColor(acc):prim};font-weight:700;font-size:12px">${i+1}</span>
+            </td>
+            <td style="padding:10px 6px"><div style="display:flex;align-items:center;gap:8px">
+              <span style="width:10px;height:10px;border-radius:50%;background:${s.color};display:inline-block;flex-shrink:0"></span>
+              <span style="font-weight:600">${esc(s.name)}</span>
+            </div></td>
+            <td style="text-align:right;padding:10px 6px">${fmt(s.totalPosts)}</td>
+            <td style="text-align:right;padding:10px 6px;font-weight:700;color:${prim}">${fmtK(s.totalImpr)}</td>
+            <td style="text-align:right;padding:10px 6px">${fmtK(s.totalEng)}</td>
+            <td style="text-align:right;padding:10px 6px;font-weight:600;color:${s.engRate>=1?'var(--success)':'var(--muted)'}">${s.engRate.toFixed(2)}%</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="padding:20px;margin-bottom:1.5rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+        <div style="font-weight:700;font-size:15px">🔝 Alle Beiträge <span id="ciPostsCount" style="font-size:12px;font-weight:400;color:var(--muted)">(${allTopPosts.length})</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="font-size:12px;font-weight:600;color:var(--muted)">Sortieren:</label>
+            <select id="ciPostsSortSelect" onchange="ciSortPosts(this.value)"
+              style="padding:6px 12px;border-radius:8px;border:1.5px solid ${prim};background:#fff;font-size:13px;font-weight:500;cursor:pointer;min-width:160px;color:${prim}">
+              <option value="impr" style="color:var(--text)">Nach Impressionen</option>
+              <option value="eng" style="color:var(--text)">Nach Engagements</option>
+              <option value="engrate" style="color:var(--text)">Nach Eng-Rate</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="font-size:12px;font-weight:600;color:var(--muted)">Person:</label>
+            <select id="ciPostsSelect" onchange="ciFilterPostsDD(this.value)"
+              style="padding:6px 12px;border-radius:8px;border:1.5px solid ${prim};background:#fff;font-size:13px;font-weight:500;cursor:pointer;min-width:180px;color:${prim}">
+              <option value="" style="color:var(--text)">— Alle Teilnehmer —</option>
+              ${memberStats.map((s)=>`<option value="${esc(s.name)}" style="color:var(--text)">${esc(s.name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+      <div id="ciPostsBody" style="display:flex;flex-direction:column;gap:12px">
+        ${ciRenderPostCards(allTopPosts)}
+      </div>
+    </div>
+  </div>
+
+  <!-- Favikon Disclaimer -->
+  <div style="margin-top:2rem;padding:14px 18px;border-radius:12px;background:var(--card);border:1.5px solid #F59E0B44;display:flex;gap:12px;align-items:flex-start">
+    <span style="font-size:20px;flex-shrink:0">⚠️</span>
+    <div>
+      <div style="font-weight:700;font-size:12px;color:#B45309;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Hinweis zu den Impressionen</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.6">
+        Die hier ausgewiesenen Impressionen und Reichweiten stammen aus dem Tool <strong>Favikon</strong> und sind <strong>Schätzwerte</strong>. Favikon greift nicht auf direkte, private API-Schnittstellen der Social-Media-Accounts zu, sondern ermittelt die Werte durch komplexe Algorithmen und Künstliche Intelligenz auf Basis öffentlich zugänglicher Leistungsdaten.
+      </div>
+    </div>
+  </div>
+
+  `;
+
+  // ── Store posts globally for modal access
+  window._ciAllPosts = allTopPosts;
+
+  // ── Charts
+  const gestamtImpr = allKeys.map(k => memberStats.reduce((a,s)=>a+(s.byKey[k]?.impr||0),0));
+  const gestamtEng  = allKeys.map(k => memberStats.reduce((a,s)=>a+(s.byKey[k]?.eng||0),0));
+
+  // ── Store chart data globally for Zeitraum filter
+  window._ciChartData = { allKeys, allLabels, memberStats, gestamtImpr, gestamtEng };
+
+  const lineOpts = (yFmt) => ({
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ display:false } },
+    scales:{ y:{ beginAtZero:true, ticks:{ callback: yFmt } } }
+  });
+
+  setTimeout(() => {
+    ['cCIImpr','cCIEng','cCIPosts'].forEach(id => destroyChart(id));
+
+    const mkLine = (id, datasets) => {
+      const ctx = document.getElementById(id);
+      if (!ctx || !allKeys.length) return;
+      CHARTS[id] = new Chart(ctx, {
+        type:'line', data:{ labels:allLabels, datasets },
+        options: lineOpts(v=>fmtK(v))
+      });
+    };
+
+    const gestamtDs = (data, label) => ({
+      label, data, borderColor:prim, backgroundColor:prim+'18',
+      borderWidth:2.5, pointRadius:2, tension:0.3, fill:false,
+      borderDash:[6,3], hidden:true
+    });
+    const memberDs = (s, field) => ({
+      label:s.name, data:allKeys.map(k=>s.byKey[k]?.[field]||0),
+      borderColor:s.color, backgroundColor:s.color+'22',
+      borderWidth:2, pointRadius:3, tension:0.3, fill:false
+    });
+
+    // Start: Gesamt sichtbar, alle Member versteckt
+    const gestamtDsVisible = (data, label) => ({...gestamtDs(data, label), hidden: false});
+    const memberDsHidden = (s, field) => ({...memberDs(s, field), hidden: true});
+
+    mkLine('cCIImpr', [gestamtDsVisible(gestamtImpr,'Gesamt'), ...memberStats.map(s=>memberDsHidden(s,'impr'))]);
+    mkLine('cCIEng',  [gestamtDsVisible(gestamtEng, 'Gesamt'), ...memberStats.map(s=>memberDsHidden(s,'eng'))]);
+
+    const ctxP = document.getElementById('cCIPosts');
+    if (ctxP && allKeys.length) {
+      const gestamtPosts = allKeys.map(k => memberStats.reduce((a,s)=>a+(s.byKey[k]?.posts||0),0));
+      CHARTS['cCIPosts'] = new Chart(ctxP, {
+        type:'bar',
+        data:{ labels:allLabels, datasets: [
+          { label:'Gesamt', data:gestamtPosts, backgroundColor:prim+'cc', borderColor:prim, borderWidth:1, hidden:false },
+          ...memberStats.map(s=>({
+            label:s.name, data:allKeys.map(k=>s.byKey[k]?.posts||0),
+            backgroundColor:s.color+'CC', borderColor:s.color, borderWidth:1, hidden:true
+          }))
+        ]},
+        options:{ responsive:true, maintainAspectRatio:false,
+          plugins:{ legend:{display:false} },
+          scales:{ x:{stacked:false}, y:{beginAtZero:true} } }
+      });
+    }
+
+    // Sync banner & KPIs with the initial Zeitraum selection
+    ciFilterZeitraumRange();
+  }, 80);
+}
+
+function ciToggleAll() {}
+function ciToggleMember(idx) {}
+
+function ciSelectMember(val) {
+  const idx = val === '' ? null : parseInt(val);
+  ['cCIImpr','cCIEng'].forEach(id => {
+    const c = CHARTS[id]; if (!c) return;
+    c.data.datasets.forEach((ds, i) => {
+      ds.hidden = idx === null ? (i !== 0) : (i !== idx + 1);
+    });
+    c.update();
+  });
+  const c2 = CHARTS['cCIPosts']; if (!c2) return;
+  c2.data.datasets.forEach((ds, i) => {
+    ds.hidden = idx === null ? (i !== 0) : (i !== idx + 1);
+  });
+  c2.update();
+  ciUpdatePersonKPI();
+}
+
+function ciSetZeitraum(val, btn) {
+  const prim = window._ciPrim || '#5B63FE';
+  const cc   = contrastColor(prim);
+  // Update pill button styles
+  document.querySelectorAll('[id^="ciZBtn_"]').forEach(b => {
+    b.style.background = 'transparent';
+    b.style.color = prim;
+  });
+  if (btn) { btn.style.background = prim; btn.style.color = cc; }
+
+  const customRow = document.getElementById('ciZeitraumCustom');
+  if (val === 'custom') {
+    if (customRow) customRow.style.display = 'flex';
+    return;
+  }
+  if (customRow) customRow.style.display = 'none';
+
+  const d = window._ciChartData;
+  if (!d) return;
+  const { allKeys } = d;
+  const n = val === 'all' ? allKeys.length : Math.min(parseInt(val), allKeys.length);
+  const von = allKeys[allKeys.length - n] || allKeys[0];
+  const bis = allKeys[allKeys.length - 1];
+  const vonEl = document.getElementById('ciZeitraumVon');
+  const bisEl = document.getElementById('ciZeitraumBis');
+  if (vonEl) vonEl.value = von;
+  if (bisEl) bisEl.value = bis;
+  ciFilterZeitraumRange();
+}
+
+function ciFilterZeitraum(val) { ciFilterZeitraumRange(); }
+
+function ciFilterZeitraumRange() {
+  const d = window._ciChartData;
+  if (!d) return;
+  const { allKeys, allLabels, memberStats, gestamtImpr, gestamtEng } = d;
+
+  const von = document.getElementById('ciZeitraumVon')?.value || allKeys[0];
+  const bis = document.getElementById('ciZeitraumBis')?.value || allKeys[allKeys.length-1];
+
+  const indices = allKeys.map((k,i) => k >= von && k <= bis ? i : -1).filter(i => i >= 0);
+  if (!indices.length) return;
+
+  const keys   = indices.map(i => allKeys[i]);
+  const labels = indices.map(i => allLabels[i]);
+
+  // ── Update charts
+  ['cCIImpr','cCIEng'].forEach(id => {
+    const c = CHARTS[id]; if (!c) return;
+    c.data.labels = labels;
+    const isImpr = id === 'cCIImpr';
+    const src = isImpr ? gestamtImpr : gestamtEng;
+    c.data.datasets[0].data = indices.map(i => src[i]);
+    memberStats.forEach((s, mi) => {
+      c.data.datasets[mi+1].data = keys.map(k => s.byKey[k]?.[isImpr?'impr':'eng'] || 0);
+    });
+    c.update();
+  });
+  const c2 = CHARTS['cCIPosts']; if (c2) {
+    c2.data.labels = labels;
+    c2.data.datasets[0].data = keys.map(k => memberStats.reduce((a,s)=>a+(s.byKey[k]?.posts||0),0));
+    memberStats.forEach((s, mi) => { c2.data.datasets[mi+1].data = keys.map(k => s.byKey[k]?.posts||0); });
+    c2.update();
+  }
+
+  // ── Recalculate KPI totals for selected range
+  const tImpr  = keys.reduce((a,k) => a + memberStats.reduce((b,s) => b+(s.byKey[k]?.impr||0), 0), 0);
+  const tEng   = keys.reduce((a,k) => a + memberStats.reduce((b,s) => b+(s.byKey[k]?.eng||0),  0), 0);
+  const tPosts = keys.reduce((a,k) => a + memberStats.reduce((b,s) => b+(s.byKey[k]?.posts||0),0), 0);
+  const n      = keys.length || 1;
+  const eRate  = tImpr > 0 ? (tEng/tImpr*100).toFixed(2)+'%' : '—';
+
+  const g = id => document.getElementById(id);
+  if (g('ciKpiImpr'))     g('ciKpiImpr').textContent     = fmt(tImpr);
+  if (g('ciKpiImprSub'))  g('ciKpiImprSub').textContent  = 'Ø ' + fmtK(Math.round(tImpr/n)) + ' / Monat';
+  if (g('ciKpiEng'))      g('ciKpiEng').textContent      = fmt(tEng);
+  if (g('ciKpiEngSub'))   g('ciKpiEngSub').textContent   = eRate + ' Ø Eng-Rate';
+  if (g('ciKpiPosts'))    g('ciKpiPosts').textContent    = fmt(tPosts);
+  if (g('ciKpiPostsSub')) g('ciKpiPostsSub').textContent = 'Ø ' + (tPosts/n).toFixed(1) + ' / Monat';
+
+  // ── Update summary banner
+  const periodStr = labels[0] + (labels.length>1 ? ' – ' + labels[labels.length-1] : '') + ' · ' + keys.length + ' Monate';
+  if (g('ciBannerPeriod'))  g('ciBannerPeriod').textContent  = periodStr;
+  if (g('ciBannerImpr'))    g('ciBannerImpr').querySelector('div').textContent    = fmtK(tImpr);
+  if (g('ciBannerEng'))     g('ciBannerEng').querySelector('div').textContent     = fmtK(tEng);
+  if (g('ciBannerPosts'))   g('ciBannerPosts').querySelector('div').textContent   = fmt(tPosts);
+  if (g('ciBannerEngRate')) g('ciBannerEngRate').querySelector('div').textContent = eRate;
+
+  ciUpdatePersonKPI();
+  ciRenderPostsFiltered();
+}
+
+function ciSaveStartDate(val) {
+  const d = window._ciChartData;
+  if (!d) return;
+  const { allKeys, allLabels, memberStats } = d;
+
+  // Save to program data
+  const prog = APP.programs?.find(p => p.id === ROUTE.clientId);
+  if (prog) {
+    if (!prog.ci) prog.ci = {};
+    prog.ci.startDate = val;
+    saveApp();
+  }
+
+  // Recalculate "Seit Beginn" banner stats
+  const sbKeys  = val ? allKeys.filter(k => k >= val) : allKeys;
+  const sbImpr  = sbKeys.reduce((a,k) => a + memberStats.reduce((b,s) => b+(s.byKey[k]?.impr||0),0), 0);
+  const sbEng   = sbKeys.reduce((a,k) => a + memberStats.reduce((b,s) => b+(s.byKey[k]?.eng||0),0), 0);
+  const sbPosts = sbKeys.reduce((a,k) => a + memberStats.reduce((b,s) => b+(s.byKey[k]?.posts||0),0), 0);
+  const sbRate  = sbImpr>0 ? (sbEng/sbImpr*100).toFixed(2)+'%' : '—';
+
+  const g = id => document.getElementById(id);
+  const setVal = (id, v) => { const el = g(id); if (el) el.querySelector('div').textContent = v; };
+  setVal('ciBeginnImpr',  fmtK(sbImpr));
+  setVal('ciBeginnEng',   fmtK(sbEng));
+  setVal('ciBeginnPosts', fmt(sbPosts));
+  setVal('ciBeginnRate',  sbRate);
+}
+
+function ciUpdatePersonKPI() {
+  const kpiEl = document.getElementById('ciPersonKPI');
+  if (!kpiEl) return;
+
+  const d = window._ciChartData;
+  if (!d) return;
+  const { allKeys, allLabels, memberStats } = d;
+
+  const memberSel = document.getElementById('ciMemberSelect');
+  const val = memberSel?.value;
+  const idx = val === '' || val == null ? null : parseInt(val);
+
+  if (idx === null) { kpiEl.style.display = 'none'; return; }
+
+  const s = memberStats[idx];
+  if (!s) { kpiEl.style.display = 'none'; return; }
+
+  // Get current time range from pickers
+  const von = document.getElementById('ciZeitraumVon')?.value || allKeys[0];
+  const bis = document.getElementById('ciZeitraumBis')?.value || allKeys[allKeys.length-1];
+  const filteredKeys = allKeys.filter(k => k >= von && k <= bis);
+  const filteredLabels = filteredKeys.map(k => allLabels[allKeys.indexOf(k)]);
+
+  const totalImpr  = filteredKeys.reduce((a,k) => a + (s.byKey[k]?.impr  || 0), 0);
+  const totalEng   = filteredKeys.reduce((a,k) => a + (s.byKey[k]?.eng   || 0), 0);
+  const totalPosts = filteredKeys.reduce((a,k) => a + (s.byKey[k]?.posts || 0), 0);
+  const engRate    = totalImpr > 0 ? (totalEng / totalImpr * 100).toFixed(2) + '%' : '—';
+  const nMonths    = filteredKeys.length || 1;
+
+  const prim = window._ciPrim || '#5B63FE';
+  const acc  = window._ciAcc  || '#FFD100';
+  const primLight = prim + '15';
+  const initials  = s.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+  const periodStr = filteredLabels.length
+    ? filteredLabels[0] + (filteredLabels.length > 1 ? ' – ' + filteredLabels[filteredLabels.length-1] : '')
+    : 'Gewählter Zeitraum';
+
+  kpiEl.style.display = 'block';
+  kpiEl.innerHTML = `
+    <div class="card" style="padding:20px;border-left:4px solid ${s.color}">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <div style="width:44px;height:44px;border-radius:50%;background:${s.color};color:${contrastColor(s.color)};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex-shrink:0">${initials}</div>
+        <div>
+          <div style="font-weight:700;font-size:16px;color:var(--text)">${esc(s.name)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">📅 ${periodStr}</div>
+        </div>
+        <button onclick="document.getElementById('ciMemberSelect').value='';ciSelectMember('')"
+          style="margin-left:auto;background:none;border:1.5px solid var(--border);border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;color:var(--muted)">✕ Alle anzeigen</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+        <div style="background:${primLight};border-radius:10px;padding:14px;text-align:center">
+          <div style="font-size:10px;font-weight:600;color:${prim};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Impressionen</div>
+          <div style="font-size:22px;font-weight:800;color:${prim}">${fmt(totalImpr)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Ø ${fmtK(Math.round(totalImpr/nMonths))} / Monat</div>
+        </div>
+        <div style="background:${primLight};border-radius:10px;padding:14px;text-align:center">
+          <div style="font-size:10px;font-weight:600;color:${prim};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Engagements</div>
+          <div style="font-size:22px;font-weight:800;color:${prim}">${fmt(totalEng)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Ø Eng-Rate: ${engRate}</div>
+        </div>
+        <div style="background:${acc}22;border-radius:10px;padding:14px;text-align:center">
+          <div style="font-size:10px;font-weight:600;color:var(--text);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Beiträge</div>
+          <div style="font-size:22px;font-weight:800;color:var(--text)">${fmt(totalPosts)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Ø ${(totalPosts/nMonths).toFixed(1)} / Monat</div>
+        </div>
+        <div style="background:${acc}22;border-radius:10px;padding:14px;text-align:center">
+          <div style="font-size:10px;font-weight:600;color:var(--text);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Eng-Rate</div>
+          <div style="font-size:22px;font-weight:800;color:${totalImpr>0&&totalEng/totalImpr>0.01?'var(--success)':'var(--text)'}">${engRate}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${filteredKeys.length} Monate analysiert</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function ciRenderPostsFiltered() {
+  const all = window._ciAllPosts; if (!all) return;
+  const memberFilter = document.getElementById('ciPostsSelect')?.value || '';
+  const sortField    = document.getElementById('ciPostsSortSelect')?.value || 'impr';
+
+  // Get current time range
+  const d = window._ciChartData;
+  const allKeys = d?.allKeys || [];
+  const von = document.getElementById('ciZeitraumVon')?.value || allKeys[0] || '';
+  const bis = document.getElementById('ciZeitraumBis')?.value || allKeys[allKeys.length-1] || '';
+
+  let posts = [...all];
+
+  // Filter by time range if post has sortKey
+  if (von && bis) {
+    posts = posts.filter(p => {
+      if (!p.sortKey) return true; // keep posts without date
+      return p.sortKey >= von && p.sortKey <= bis;
+    });
+  }
+
+  // Filter by member
+  if (memberFilter) posts = posts.filter(p => p._memberName === memberFilter);
+
+  // Sort
+  posts.sort((a, b) => {
+    if (sortField === 'eng') return (b.eng||0) - (a.eng||0);
+    if (sortField === 'engrate') {
+      const ra = a.impr>0 ? (a.eng||0)/a.impr : 0;
+      const rb = b.impr>0 ? (b.eng||0)/b.impr : 0;
+      return rb - ra;
+    }
+    return (b.impr||0) - (a.impr||0);
+  });
+
+  window._ciFilteredPosts = posts;
+  window._ciPostsShown = 10;
+  ciRenderPostsPage();
+
+  const countEl = document.getElementById('ciPostsCount');
+  if (countEl) countEl.textContent = '(' + posts.length + ')';
+}
+
+function ciRenderPostsPage() {
+  const posts = window._ciFilteredPosts || [];
+  const shown = window._ciPostsShown || 10;
+  const prim  = window._ciPrim || '#5B63FE';
+  const body  = document.getElementById('ciPostsBody');
+  if (!body) return;
+  if (!posts.length) {
+    body.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted);font-size:14px">Keine Beiträge im gewählten Zeitraum gefunden.</div>`;
+    return;
+  }
+  const visible = posts.slice(0, shown);
+  const remaining = posts.length - shown;
+  body.innerHTML = ciRenderPostCards(visible) + (remaining > 0
+    ? `<div style="text-align:center;margin-top:8px">
+        <button onclick="window._ciPostsShown=(window._ciPostsShown||10)+10;ciRenderPostsPage()"
+          style="background:${prim};color:${contrastColor(prim)};border:none;border-radius:20px;padding:10px 28px;font-size:13px;font-weight:700;cursor:pointer">
+          Mehr anzeigen (${Math.min(remaining,10)} von ${remaining} weiteren)
+        </button>
+       </div>`
+    : '');
+}
+
+function ciEnsureModal() {
+  if (document.getElementById('ciPostModal')) return;
+  const el = document.createElement('div');
+  el.id = 'ciPostModal';
+  el.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;align-items:center;justify-content:center';
+  el.onclick = (e) => { if (e.target === el) el.style.display = 'none'; };
+  el.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:24px 28px;max-width:640px;width:92%;max-height:88vh;overflow-y:auto;position:relative;box-shadow:0 12px 48px rgba(0,0,0,0.28)">
+      <button onclick="document.getElementById('ciPostModal').style.display='none'" style="position:absolute;top:14px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:#666;line-height:1">✕</button>
+      <div id="ciPostModalContent"></div>
+    </div>`;
+  document.body.appendChild(el);
+}
+
+function ciShowPostModal(idx) {
+  const arr = window._ciFilteredPosts || window._ciAllPosts || [];
+  const p = arr[idx];
+  if (!p) return;
+  ciEnsureModal();
+  const prim     = window._ciPrim || '#0A66C2';
+  const engRate  = p.impr>0 ? ((p.eng||0)/p.impr*100).toFixed(2)+'%' : '—';
+  const engGood  = p.impr>0 && (p.eng||0)/p.impr > 0.01;
+  const initials = (p._memberName||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+
+  // Format text: preserve line breaks, highlight hashtags & mentions
+  const formatText = (raw) => {
+    if (!raw) return '<span style="color:var(--muted);font-style:italic">Kein Text verfügbar</span>';
+    return raw
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/\n/g,'<br>')
+      .replace(/(#\w+)/g,`<span style="color:${prim};font-weight:600">$1</span>`)
+      .replace(/(@\w+)/g,`<span style="color:${prim};font-weight:600">$1</span>`);
+  };
+
+  const nameEl = p._memberProfileUrl
+    ? `<a href="${p._memberProfileUrl}" target="_blank" style="font-weight:700;font-size:15px;color:var(--text);text-decoration:none" onmouseover="this.style.color='${prim}'" onmouseout="this.style.color='var(--text)'">${esc(p._memberName)}</a>`
+    : `<span style="font-weight:700;font-size:15px;color:var(--text)">${esc(p._memberName)}</span>`;
+
+  document.getElementById('ciPostModalContent').innerHTML = `
+    <!-- LinkedIn-style post card -->
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+
+      <!-- Header: avatar + name + LinkedIn button -->
+      <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px">
+        <div style="width:52px;height:52px;border-radius:50%;background:${p._memberColor};color:${contrastColor(p._memberColor)};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px;flex-shrink:0;border:2px solid ${prim}22">${initials}</div>
+        <div style="flex:1;min-width:0">
+          <div>${nameEl}</div>
+          ${p.label?`<div style="font-size:12px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.label)}</div>`:''}
+          <div style="display:flex;align-items:center;gap:5px;margin-top:3px">
+            <span style="font-size:11px;color:var(--muted)">${p.label||'LinkedIn'}</span>
+            <span style="font-size:11px;color:var(--muted)">·</span>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="#0A66C2" style="width:12px;height:12px"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854zm4.943 12.248V6.169H2.542v7.225zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248S2.4 3.226 2.4 3.934c0 .694.521 1.248 1.327 1.248zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193v.025h-.016l.016-.025V6.169h-2.4c.03.678 0 7.225 0 7.225z"/></svg>
+          </div>
+        </div>
+        ${p.url?`<a href="${p.url}" target="_blank" onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:5px;padding:7px 16px;background:#0A66C2;color:#fff;border-radius:20px;text-decoration:none;font-size:13px;font-weight:600;white-space:nowrap;flex-shrink:0">↗ Beitrag</a>`:''}
+      </div>
+
+      <!-- Post text -->
+      <div style="font-size:14px;line-height:1.65;color:var(--text);margin-bottom:16px;word-break:break-word">${formatText(p.caption)}</div>
+
+      <!-- Reaction summary line (LinkedIn style) -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin-bottom:8px;font-size:12px;color:var(--muted)">
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:16px">👍</span><span style="font-size:16px">💡</span><span style="font-size:16px">❤️</span>
+          <span style="margin-left:4px">${fmtK(p.likes||0)} Reaktionen</span>
+        </div>
+        <div style="display:flex;gap:12px">
+          <span>${fmtK(p.comments||0)} Kommentare</span>
+          <span>${fmtK(p.shares||0)} Reposts</span>
+        </div>
+      </div>
+
+      <!-- KPI stats bar -->
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:10px">
+        <div style="text-align:center;background:var(--bg);border-radius:10px;padding:10px 4px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Impressionen</div>
+          <div style="font-weight:800;font-size:16px;color:${prim}">${fmtK(p.impr||0)}</div>
+        </div>
+        <div style="text-align:center;background:var(--bg);border-radius:10px;padding:10px 4px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Likes</div>
+          <div style="font-weight:800;font-size:16px;color:var(--text)">${fmtK(p.likes||0)}</div>
+        </div>
+        <div style="text-align:center;background:var(--bg);border-radius:10px;padding:10px 4px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Kommentare</div>
+          <div style="font-weight:800;font-size:16px;color:var(--text)">${fmtK(p.comments||0)}</div>
+        </div>
+        <div style="text-align:center;background:var(--bg);border-radius:10px;padding:10px 4px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Shares</div>
+          <div style="font-weight:800;font-size:16px;color:var(--text)">${fmtK(p.shares||0)}</div>
+        </div>
+        <div style="text-align:center;background:${engGood?'var(--success)18':prim+'18'};border-radius:10px;padding:10px 4px;border:1.5px solid ${engGood?'var(--success)':prim}22">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Eng-Rate</div>
+          <div style="font-weight:800;font-size:16px;color:${engGood?'var(--success)':prim}">${engRate}</div>
+        </div>
+      </div>
+
+    </div>`;
+  document.getElementById('ciPostModal').style.display = 'flex';
+}
+
+function ciFilterPostsDD(v) { ciRenderPostsFiltered(); }
+function ciSortPosts(v)      { ciRenderPostsFiltered(); }
+
+function ciFilterPosts(memberName, btn) { ciFilterPostsDD(memberName||''); }
+
+function toggleCIPersonDetail(pgId, clientId) {
+  const pg = (APP.programs||[]).find(p=>p.id===pgId);
+  if (!pg) return;
+  // Resolve member from unified shape (supports both client and favikon members)
+  const { members: pgMembers } = buildCIProgramData(pg);
+  const c = pgMembers.find(m => (m.clientId || m._id) === clientId);
+  if (!c) return;
+
+  const detailRow = document.getElementById('cidetail_' + clientId);
+  if (!detailRow) return;
+
+  if (detailRow.style.display !== 'none') {
+    detailRow.style.display = 'none';
+    destroyChart('ciPersonImpr_' + clientId);
+    return;
+  }
+
+  // Close any open detail rows first
+  document.querySelectorAll('[id^="cidetail_"]').forEach(r => {
+    if (r.id !== 'cidetail_' + clientId) {
+      r.style.display = 'none';
+      const cid2 = r.id.replace('cidetail_','');
+      destroyChart('ciPersonImpr_' + cid2);
+    }
+  });
+
+  const mf = filterMonthly(c.monthly||{labels:[],impressions:[],engagements:[],postsPerMonth:[],_sortKeys:[]}, pgId);
+  const tImpr  = (mf.impressions||[]).reduce((a,b)=>a+b,0);
+  const tEng   = (mf.engagements||[]).reduce((a,b)=>a+b,0);
+  const tPosts = (mf.postsPerMonth||[]).reduce((a,b)=>a+b,0);
+  const engRate = tImpr > 0 ? (tEng/tImpr*100).toFixed(2) : '0.00';
+  const topPosts = [...(c.posts||[])].sort((a,b)=>(b.impr||0)-(a.impr||0)).slice(0,5);
+  const prim = c.ci?.primary || '#0A66C2';
+
+  detailRow.cells[0].innerHTML = `
+    <div style="background:#F4F5FF;border-radius:10px;padding:16px;margin:4px 0 8px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:12px;color:${prim}">👤 ${esc(c.name||'?')} · Detail</div>
+      <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <div style="background:#fff;border-radius:8px;padding:10px 16px;min-width:120px">
+          <div style="font-size:11px;color:var(--muted)">Impressionen</div>
+          <div style="font-size:18px;font-weight:700;color:${prim}">${fmtK(tImpr)}</div>
+        </div>
+        <div style="background:#fff;border-radius:8px;padding:10px 16px;min-width:120px">
+          <div style="font-size:11px;color:var(--muted)">Engagements</div>
+          <div style="font-size:18px;font-weight:700">${fmtK(tEng)}</div>
+        </div>
+        <div style="background:#fff;border-radius:8px;padding:10px 16px;min-width:120px">
+          <div style="font-size:11px;color:var(--muted)">Beiträge</div>
+          <div style="font-size:18px;font-weight:700">${fmt(tPosts)}</div>
+        </div>
+        <div style="background:#fff;border-radius:8px;padding:10px 16px;min-width:120px">
+          <div style="font-size:11px;color:var(--muted)">Ø Eng-Rate</div>
+          <div style="font-size:18px;font-weight:700;color:${parseFloat(engRate)>=1?'var(--success)':'var(--muted)'}">${engRate}%</div>
+        </div>
+      </div>
+      ${mf.labels?.length ? `<canvas id="ciPersonImpr_${clientId}" height="140" style="margin-bottom:14px"></canvas>` : ''}
+      ${topPosts.length ? `
+      <div style="font-weight:600;font-size:12px;color:var(--muted);margin-bottom:8px">TOP 5 BEITRÄGE</div>
+      ${topPosts.map((p,i) => `
+        <div style="background:#fff;border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;gap:12px;align-items:flex-start">
+          <span style="font-weight:700;color:${prim};min-width:18px">${i+1}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((p.caption||p.label||'').slice(0,100))}</div>
+            ${p.label?`<div style="font-size:11px;color:var(--muted)">${esc(p.label)}</div>`:''}
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-weight:700;font-size:13px">${fmtK(p.impr||0)}</div>
+            <div style="font-size:11px;color:var(--muted)">Impr.</div>
+          </div>
+        </div>`).join('')}` : '<div style="color:var(--muted);font-size:12px">Keine Posts vorhanden</div>'}
+    </div>`;
+  detailRow.style.display = '';
+
+  if (mf.labels?.length) {
+    setTimeout(() => {
+      const ctx = document.getElementById('ciPersonImpr_' + clientId);
+      if (!ctx) return;
+      destroyChart('ciPersonImpr_' + clientId);
+      CHARTS['ciPersonImpr_' + clientId] = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: mf.labels,
+          datasets: [{
+            label: 'Impressionen',
+            data: mf.impressions||[],
+            borderColor: prim,
+            backgroundColor: prim + '22',
+            borderWidth: 2, pointRadius: 3, tension: 0.35, fill: true
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { callback: v => fmtK(v) } } }
+        }
+      });
+    }, 30);
+  }
+}
+
 function askDeleteClient(id) {
   const c = getClient(id);
   if (!c) return;
@@ -3665,6 +5688,135 @@ function globalSave() {
 // ══════════════════════════════════════════
 //  EXPORT
 // ══════════════════════════════════════════
+async function ciUpdateBlob(pg) {
+  const id = pg.ci?.shareBlobId;
+  if (!id) return;
+  try {
+    await fetch(`https://jsonblob.com/api/jsonBlob/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ type: 'ciprogram', program: pg })
+    });
+  } catch(e) { console.warn('Blob update failed', e); }
+}
+
+async function ciCreateBlob(pg) {
+  const res = await fetch('https://jsonblob.com/api/jsonBlob', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ type: 'ciprogram', program: pg })
+  });
+  if (!res.ok) throw new Error('jsonblob.com nicht erreichbar');
+  const loc = res.headers.get('Location') || '';
+  const id = loc.split('/').pop();
+  if (!id) throw new Error('Keine Blob-ID erhalten');
+  return id;
+}
+
+async function copyCIShareLink(pgId) {
+  const pg = (APP.programs||[]).find(p=>p.id===pgId);
+  if (!pg) return;
+  const prim = pg.ci?.primary || '#5B63FE';
+
+  // Show dialog immediately with loading state
+  document.getElementById('_shareDlg')?.remove();
+  const d = document.createElement('div');
+  d.id = '_shareDlg';
+  d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center';
+  d.onclick = e => { if (e.target === d) d.remove(); };
+  const showDialog = (url, isNew) => {
+    d.innerHTML = `<div style="background:#fff;border-radius:18px;padding:30px 32px;max-width:520px;width:93%;box-shadow:0 24px 70px rgba(0,0,0,.28);font-family:'DM Sans',sans-serif">
+      <div style="font-size:21px;font-weight:800;margin-bottom:4px">🔗 Kunden-Link</div>
+      <div style="font-size:13px;color:#6E7A9F;margin-bottom:6px">Diesen Link an <strong>${esc(pg.name||'deinen Kunden')}</strong> senden — öffnet das CI-Dashboard direkt im Browser, ohne Login.</div>
+      <div style="font-size:11px;color:#00A86B;font-weight:600;margin-bottom:14px">✅ ${isNew ? 'Link erstellt — wird bei jedem neuen Import automatisch aktualisiert.' : 'Link ist aktuell — Daten wurden zuletzt beim Import synchronisiert.'}</div>
+      <textarea id="_shareBox" readonly onclick="this.select()" style="width:100%;box-sizing:border-box;height:60px;padding:10px 12px;border:1.5px solid #C7CAFF;border-radius:10px;font-size:11px;font-family:monospace;color:#3B3FCC;background:#F8F9FF;resize:none;line-height:1.5">${url}</textarea>
+      <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+        <button id="_shareCopyBtn" onclick="
+          document.getElementById('_shareBox').select();
+          try{navigator.clipboard.writeText(document.getElementById('_shareBox').value)}catch(e){}
+          document.execCommand('copy');
+          this.innerHTML='✅ Kopiert!';this.style.background='#00A86B';
+          setTimeout(()=>{this.innerHTML='📋 Kopieren';this.style.background='${prim}'},2500)
+        " style="padding:10px 24px;background:${prim};color:${contrastColor(prim)};border:none;border-radius:10px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:700;font-size:14px">📋 Kopieren</button>
+        <button onclick="document.getElementById('_shareDlg').remove()" style="padding:10px 18px;background:#F0F1FF;color:#5B63FE;border:none;border-radius:10px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600">Schließen</button>
+      </div>
+      <div style="margin-top:12px;font-size:11px;color:#9AA0B4">💡 Per E-Mail, WhatsApp oder Slack senden. Kein Login nötig. Kunden sehen immer die neuesten Daten.</div>
+    </div>`;
+    setTimeout(() => {
+      const box = document.getElementById('_shareBox');
+      if (box) { box.select(); try { document.execCommand('copy'); } catch(e) {} }
+      try { navigator.clipboard.writeText(url); } catch(e) {}
+    }, 100);
+  };
+
+  d.innerHTML = `<div style="background:#fff;border-radius:18px;padding:40px 32px;max-width:400px;width:93%;box-shadow:0 24px 70px rgba(0,0,0,.28);font-family:'DM Sans',sans-serif;text-align:center">
+    <div style="font-size:28px;margin-bottom:12px">⏳</div>
+    <div style="font-weight:700;font-size:15px;margin-bottom:6px">Link wird erstellt…</div>
+    <div style="font-size:12px;color:#9AA0B4">Daten werden sicher gespeichert</div>
+  </div>`;
+  document.body.appendChild(d);
+
+  try {
+    let blobId = pg.ci?.shareBlobId;
+    let isNew = false;
+    if (blobId) {
+      // Update existing blob with latest data
+      await ciUpdateBlob(pg);
+    } else {
+      // Create new blob
+      blobId = await ciCreateBlob(pg);
+      if (!pg.ci) pg.ci = {};
+      pg.ci.shareBlobId = blobId;
+      saveApp();
+      isNew = true;
+    }
+    const url = `https://celinealessa.github.io/linkedin-studio/?blob=${blobId}`;
+    showDialog(url, isNew);
+  } catch(e) {
+    // Fallback to encoded URL if jsonblob is unreachable
+    showToast('⚠️ Kein Internet – Link mit eingebetteten Daten erstellt', 'warn');
+    const encoded = shareEncode({ type:'ciprogram', program: pg });
+    const url = 'https://celinealessa.github.io/linkedin-studio/?share=' + encoded;
+    showDialog(url, false);
+  }
+}
+
+function exportCIClientView(pgId) {
+  const pg = (APP.programs||[]).find(p=>p.id===pgId);
+  if (!pg) return;
+
+  // Build a stripped APP with only this program's data
+  const clientApp = { clients: [], programs: [pg] };
+  const clientJson = JSON.stringify(clientApp);
+
+  // Get current HTML and patch the embedded data + force open this dashboard on load
+  let html = document.documentElement.outerHTML;
+
+  // Replace __appdata
+  html = html.replace(
+    /<script id="__appdata"[^>]*>[\s\S]*?<\/script>/,
+    `<script id="__appdata" type="application/json">${clientJson}<\/script>`
+  );
+
+  // Auto-navigate to this CI program on load (inject after APP = loadApp())
+  html = html.replace(
+    'const APP = loadApp();',
+    `const APP = loadApp();\n  // Auto-open client dashboard\n  setTimeout(()=>{ ROUTE.view='ciprogram'; ROUTE.clientId='${pgId}'; renderApp(); },100);`
+  );
+
+  // Remove edit/save buttons and sidebar in client view
+  // Inject a "read-only" flag
+  html = html.replace('const APP = loadApp();', 'window._ciReadOnly = true;\n  const APP = loadApp();');
+
+  const name = (pg.name||'CI-Dashboard').replace(/[^a-zA-Z0-9_-]/g,'_');
+  const blob = new Blob([html], { type:'text/html;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Kundenansicht_${name}.html`;
+  a.click();
+  showToast('Kundenansicht exportiert — Datei per E-Mail oder Link versenden', 'ok');
+}
+
 function saveAsHTML() {
   const html = document.documentElement.outerHTML;
   const blob = new Blob([html], { type:'text/html;charset=utf-8' });
@@ -4170,7 +6322,7 @@ function renderCompanyDash(container) {
   if (!c) { navigate('home'); return; }
   const p = c.ci.primary || '#0A66C2';
   const acc = c.ci.accent || '#FFD100';
-  const monthly = c.monthly;
+  const monthly = filterMonthly(c.monthly, c.id);
   const cm = c.companyMonthly;
   const mentions = c.mentions || [];
   const posts = c.posts || [];
@@ -4178,7 +6330,7 @@ function renderCompanyDash(container) {
   const hasMonthly = monthly?.labels?.length;
   const hasCM = cm?.labels?.length;
 
-  // KPIs aus monthly
+  // KPIs aus monthly (gefiltert)
   let totalImpr=0, totalFoll=0, totalEng=0, totalVisitors=0, totalPageViews=0, totalClicks=0, totalMentions=mentions.length;
   if (hasMonthly) {
     totalImpr = (monthly.impressions||[]).reduce((s,v)=>s+v,0);
@@ -4237,14 +6389,16 @@ function renderCompanyDash(container) {
         </table>` : `<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px">Noch keine Erwähnungen eingetragen.</div>`}
     </div>`;
 
-  // Posts section
-  const postsHtml = posts.length ? `
+  // Posts section — gefiltert nach aktivem Zeitraum
+  const filteredPosts = filterPosts(posts, c.id);
+  const postsHtml = filteredPosts.length ? `
     <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:20px">
       <div style="font-size:15px;font-weight:700;margin-bottom:14px">🏆 Top-Posts</div>
       <div class="posts-list">
-        ${posts.slice(0,5).map((post,i)=>{
+        ${filteredPosts.slice(0,5).map((post,i)=>{
           const tm = (typeof TYPE_META !== 'undefined' && TYPE_META[post.type])||{label:post.type||'Post',bg:'#F1EFEA',col:'#4A4A4A'};
-          return `<div class="post-row" onclick="openPostOverlay(${i})" style="cursor:pointer">
+          const _oi = posts.indexOf(post);
+          return `<div class="post-row" onclick="openPostOverlay(${_oi >= 0 ? _oi : i})" style="cursor:pointer">
             <div class="post-rank ${i===0?'g':i===1?'s':i===2?'b':''}">#${i+1}</div>
             <div style="flex:1;min-width:0"><div class="post-cap">${post.caption||'—'}</div><div class="post-meta">${post.label||''}</div></div>
             <div class="post-pill" style="background:${tm.bg};color:${tm.col}">${tm.label}</div>
@@ -4252,6 +6406,26 @@ function renderCompanyDash(container) {
             <div class="post-impr" style="color:${p}">${fmt(post.impr||0)}<div style="font-size:9px;color:var(--muted);font-weight:400">Impressionen</div></div>
           </div>`;
         }).join('')}
+      </div>
+    </div>` : '';
+
+  const chartsHtml = hasMonthly ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div class="chart-card">
+        <div class="chart-title">📈 Impressionen</div>
+        <div style="position:relative;height:180px"><canvas id="cCompImpr"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">👥 Follower-Wachstum</div>
+        <div style="position:relative;height:180px"><canvas id="cCompFoll"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">⚡ Engagements</div>
+        <div style="position:relative;height:180px"><canvas id="cCompEng"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">📅 Posting-Frequenz</div>
+        <div style="position:relative;height:180px"><canvas id="cCompPosts"></canvas></div>
       </div>
     </div>` : '';
 
@@ -4263,7 +6437,8 @@ function renderCompanyDash(container) {
           <div style="font-size:22px;font-weight:800;margin-top:2px">${c.ci.client||'Company Page'}</div>
           <div style="font-size:12px;opacity:0.75;margin-top:2px">${c.ci.period||''}</div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          ${renderDatePicker(c)}
           <button class="btn btn-sm" onclick="navigate('edit','${c.id}')" style="background:rgba(255,255,255,0.2);color:#fff;border-color:rgba(255,255,255,0.4)">✏️ Bearbeiten</button>
           <button class="btn btn-sm" onclick="navigate('postanalysis','${c.id}')" style="background:rgba(255,255,255,0.2);color:#fff;border-color:rgba(255,255,255,0.4)">📊 Post-Analyse</button>
           <button class="btn btn-sm" onclick="openAddMention('${c.id}')" style="background:rgba(255,255,255,0.2);color:#fff;border-color:rgba(255,255,255,0.4)">＋ Erwähnung</button>
@@ -4275,8 +6450,52 @@ function renderCompanyDash(container) {
           <div class="empty-title">Noch keine Daten</div>
           <div class="empty-sub">Bearbeite die Company Page und importiere LinkedIn-Daten.</div>
           <button class="btn btn-primary" onclick="navigate('edit','${c.id}')">Daten eingeben</button>
-        </div>` : kpiHtml + mentionsHtml + postsHtml}
+        </div>` : kpiHtml + chartsHtml + mentionsHtml + postsHtml}
     </div>`;
+
+  if (hasMonthly) setTimeout(() => renderCompanyCharts({ ...c, monthly }), 60);
+}
+
+function renderCompanyCharts(c) {
+  const m = c.monthly;
+  const primary = c.ci.primary || '#0A66C2';
+  const gridC = 'rgba(0,0,0,0.05)', txtC = '#6E7A9F';
+  const base = { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} };
+  const xScale = { ticks:{color:txtC,font:{size:10},autoSkip:false,maxRotation:45}, grid:{color:gridC} };
+  const yScale = (cb) => ({ ticks:{color:txtC,font:{size:10},callback:cb||(v=>v)}, grid:{color:gridC} });
+  const kFmt = v => v>=1000000?(v/1000000).toFixed(1)+'M':v>=1000?(v/1000).toFixed(0)+'K':v;
+
+  ['cCompImpr','cCompFoll','cCompEng','cCompPosts'].forEach(id => { destroyChart(id); });
+
+  const el = id => document.getElementById(id);
+
+  if (el('cCompImpr')) CHARTS['cCompImpr'] = new Chart(el('cCompImpr'), {
+    type:'bar', data:{ labels:m.labels, datasets:[{data:m.impressions, backgroundColor:primary, borderRadius:4}]},
+    options:{...base, scales:{ x:xScale, y:yScale(kFmt) }}
+  });
+
+  if (el('cCompFoll')) CHARTS['cCompFoll'] = new Chart(el('cCompFoll'), {
+    type:'bar', data:{ labels:m.labels, datasets:[{data:m.followers, backgroundColor:primary+'BB', borderRadius:4}]},
+    options:{...base, scales:{ x:xScale, y:yScale() }}
+  });
+
+  if (el('cCompEng')) CHARTS['cCompEng'] = new Chart(el('cCompEng'), {
+    type:'line', data:{ labels:m.labels, datasets:[{data:m.engagements, borderColor:primary, backgroundColor:primary+'22', fill:true, pointBackgroundColor:primary, pointRadius:4, borderWidth:2, tension:0.35}]},
+    options:{...base, scales:{ x:xScale, y:yScale() }}
+  });
+
+  // Posting frequency: use autoPosts count per month if postsPerMonth is all 0
+  const postFreq = (m.postsPerMonth||[]).some(v=>v>0) ? m.postsPerMonth
+    : (() => {
+        const pm = new Map(); m.labels.forEach(l => pm.set(l, 0));
+        (c.posts||[]).forEach(p => { if (p.label && pm.has(p.label)) pm.set(p.label, pm.get(p.label)+1); });
+        return m.labels.map(l => pm.get(l)||0);
+      })();
+
+  if (el('cCompPosts')) CHARTS['cCompPosts'] = new Chart(el('cCompPosts'), {
+    type:'bar', data:{ labels:m.labels, datasets:[{data:postFreq, backgroundColor:primary+'88', borderRadius:4}]},
+    options:{...base, scales:{ x:xScale, y:yScale() }}
+  });
 }
 
 function openAddMention(cid) {
