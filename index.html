@@ -990,7 +990,7 @@ function copyShareLink(clientId) {
 function checkShareParam() {
   const params = new URLSearchParams(location.search);
   let encoded  = params.get('share');
-  const blobId = params.get('blob');
+  const blobId = params.get('gist') || params.get('blob');
 
   // Legacy-Fallback: #share=
   if (!encoded && !blobId) {
@@ -1025,9 +1025,14 @@ function checkShareParam() {
   };
 
   if (blobId) {
-    // Fetch from jsonblob.com
-    fetch(`https://jsonblob.com/api/jsonBlob/${blobId}`, { headers:{ Accept:'application/json' } })
-      .then(r => { if (!r.ok) throw new Error('Blob nicht gefunden ('+r.status+')'); return r.json(); })
+    // Fetch from GitHub Gist (public, no auth needed to read)
+    fetch(`https://api.github.com/gists/${blobId}`, { headers:{ Accept:'application/vnd.github+json' } })
+      .then(r => { if (!r.ok) throw new Error('Gist nicht gefunden ('+r.status+')'); return r.json(); })
+      .then(gist => {
+        const file = gist.files?.['ci_dashboard.json'];
+        if (!file) throw new Error('ci_dashboard.json nicht im Gist');
+        return JSON.parse(file.content || file.raw_url ? file.content || fetch(file.raw_url).then(r=>r.text()) : '{}');
+      })
       .then(raw => { try { handleRaw(raw); } catch(e) { showError(e.message); } })
       .catch(e => showError('Verbindung fehlgeschlagen: ' + e.message));
     return true;
@@ -5688,29 +5693,43 @@ function globalSave() {
 // ══════════════════════════════════════════
 //  EXPORT
 // ══════════════════════════════════════════
+function _GH_TOKEN() {
+  return localStorage.getItem('_gh_pat') || '';
+}
+function _ensureGHToken() {
+  if (_GH_TOKEN()) return true;
+  const t = prompt('GitHub Personal Access Token eingeben (einmalig, wird lokal gespeichert):\n\nErstellen unter: github.com → Settings → Developer settings → Personal access tokens → Gists scope aktivieren');
+  if (t?.trim()) { localStorage.setItem('_gh_pat', t.trim()); return true; }
+  return false;
+}
+
 async function ciUpdateBlob(pg) {
-  const id = pg.ci?.shareBlobId;
-  if (!id) return;
+  const gistId = pg.ci?.shareBlobId;
+  if (!gistId) return;
   try {
-    await fetch(`https://jsonblob.com/api/jsonBlob/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ type: 'ciprogram', program: pg })
+    await fetch(`https://api.github.com/gists/${gistId}`, {
+      method: 'PATCH',
+      headers: { 'Authorization': `token ${_GH_TOKEN()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: { 'ci_dashboard.json': { content: JSON.stringify({ type:'ciprogram', program: pg }) } } })
     });
-  } catch(e) { console.warn('Blob update failed', e); }
+  } catch(e) { console.warn('Gist update failed', e); }
 }
 
 async function ciCreateBlob(pg) {
-  const res = await fetch('https://jsonblob.com/api/jsonBlob', {
+  if (!_ensureGHToken()) throw new Error('Kein GitHub Token gesetzt');
+  const res = await fetch('https://api.github.com/gists', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify({ type: 'ciprogram', program: pg })
+    headers: { 'Authorization': `token ${_GH_TOKEN()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      description: `CI Dashboard: ${pg.name}`,
+      public: true,
+      files: { 'ci_dashboard.json': { content: JSON.stringify({ type:'ciprogram', program: pg }) } }
+    })
   });
-  if (!res.ok) throw new Error('jsonblob.com nicht erreichbar');
-  const loc = res.headers.get('Location') || '';
-  const id = loc.split('/').pop();
-  if (!id) throw new Error('Keine Blob-ID erhalten');
-  return id;
+  if (!res.ok) throw new Error('GitHub Gist konnte nicht erstellt werden (' + res.status + ')');
+  const data = await res.json();
+  if (!data.id) throw new Error('Keine Gist-ID erhalten');
+  return data.id;
 }
 
 async function copyCIShareLink(pgId) {
@@ -5770,7 +5789,7 @@ async function copyCIShareLink(pgId) {
       saveApp();
       isNew = true;
     }
-    const url = `https://celinealessa.github.io/linkedin-studio/?blob=${blobId}`;
+    const url = `https://celinealessa.github.io/linkedin-studio/?gist=${blobId}`;
     showDialog(url, isNew);
   } catch(e) {
     // Fallback to encoded URL if jsonblob is unreachable
