@@ -1545,7 +1545,7 @@ function buildSharePayload(c) {
     ci: { primary:c.ci.primary, accent:c.ci.accent, color2:c.ci.color2||'',
           color3:c.ci.color3||'', client:c.ci.client, person:c.ci.person||'',
           period:c.ci.period||'', agency:c.ci.agency||'', logo:c.ci.logo||'' },
-    monthly: m.labels ? { labels:m.labels, impressions:m.impressions,
+    monthly: m.labels ? { labels:m.labels, _sortKeys:m._sortKeys||m.labels, impressions:m.impressions,
       followers:m.followers, engagements:m.engagements,
       postsPerMonth:m.postsPerMonth, totalFollowers:m.totalFollowers||0 } : null,
     posts: (c.posts||[]).map(p=>({caption:(p.caption||'').slice(0,120),label:p.label,impr:p.impr||0,eng:p.eng||0,likes:p.likes||0,comments:p.comments||0,shares:p.shares||0,url:p.url||'',type:p.type||'story'})),
@@ -2743,7 +2743,7 @@ function renderCompare(container) {
         ${(fCmp.from||fCmp.to)?`<button onclick="setCmpFilter(null,null)" style="background:rgba(255,255,255,0.25);border:none;color:#fff;border-radius:5px;padding:2px 7px;font-size:11px;cursor:pointer">✕</button>`:''}
       </div>
       <button onclick="createCmpNote('${idA}','${idB}')" style="background:rgba(255,255,255,0.25);color:#fff;border:1px solid rgba(255,255,255,0.5);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📝 Notiz</button>
-      <button onclick="copyCompareShareLink('${idA}','${idB}')" style="background:rgba(255,255,255,0.25);color:#fff;border:1px solid rgba(255,255,255,0.5);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔗 Kunden-Link</button>
+      ${!cA._readOnly ? `<button onclick="copyCompareShareLink('${idA}','${idB}')" style="background:rgba(255,255,255,0.25);color:#fff;border:1px solid rgba(255,255,255,0.5);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔗 Kunden-Link</button>` : ''}
       <button onclick="saveCurrentCompare('${idA}','${idB}')" style="background:rgba(255,255,255,0.25);color:#fff;border:1px solid rgba(255,255,255,0.5);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💾 Speichern</button>
       <button onclick="navigate('home')" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">← Zurück</button>
     </div>
