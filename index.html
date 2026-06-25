@@ -1237,6 +1237,46 @@ function saveApp() {
     } catch(e) {}
     _saving = false;
   }
+  // Auto-sync Gist im Hintergrund (debounced, kein Token = kein Aufruf)
+  _scheduleGistSync();
+}
+
+let _gistSyncTimer = null;
+function _scheduleGistSync() {
+  if (!_GH_TOKEN()) return; // kein Token gesetzt → kein Sync
+  clearTimeout(_gistSyncTimer);
+  _gistSyncTimer = setTimeout(_runGistSync, 2500);
+}
+
+async function _runGistSync() {
+  if (!_GH_TOKEN()) return;
+  const token = _GH_TOKEN();
+  const headers = { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' };
+
+  // Alle Clients mit shareBlobId synchronisieren
+  for (const c of (APP.clients || [])) {
+    const blobId = c.ci?.shareBlobId;
+    if (!blobId) continue;
+    try {
+      const payload = buildSharePayload(c);
+      await fetch(`https://api.github.com/gists/${blobId}`, {
+        method: 'PATCH', headers,
+        body: JSON.stringify({ files: { 'ci_dashboard.json': { content: JSON.stringify(payload) } } })
+      });
+    } catch(e) {}
+  }
+
+  // Alle CI-Programme mit shareBlobId synchronisieren
+  for (const pg of (APP.programs || [])) {
+    const blobId = pg.ci?.shareBlobId;
+    if (!blobId) continue;
+    try {
+      await fetch(`https://api.github.com/gists/${blobId}`, {
+        method: 'PATCH', headers,
+        body: JSON.stringify({ files: { 'ci_dashboard.json': { content: JSON.stringify({ type:'ciprogram', program: pg }) } } })
+      });
+    } catch(e) {}
+  }
 }
 
 
@@ -4606,6 +4646,15 @@ function removeLoadedFile(idx) {
   refreshFileChips();
 }
 
+function ciSaveMemberName(pgId, idx, val) {
+  const pg = (APP.programs||[]).find(p=>p.id===pgId);
+  if (!pg || !pg.members?.[idx]) return;
+  const trimmed = val.trim();
+  pg.members[idx].displayName = trimmed || pg.members[idx].name;
+  saveApp();
+  showToast(`✅ Name gespeichert: ${pg.members[idx].displayName}`, 'ok');
+}
+
 function renameCIMember(pgId, idx) {
   const pg = (APP.programs||[]).find(p=>p.id===pgId);
   if (!pg || !pg.members?.[idx]) return;
@@ -6146,10 +6195,13 @@ function renderCIProgramEdit(container) {
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
             <div style="width:32px;height:32px;border-radius:50%;background:#5B63FE;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0">${(m.displayName||m.name||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase()}</div>
             <div style="flex:1;min-width:0">
-              <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
-                <span id="cimember_name_${i}" style="font-size:12px;font-weight:600">${esc(m.displayName||m.name)}</span>
-                ${m.name !== (m.displayName||m.name) ? `<span style="font-size:10px;color:var(--muted)">(original: ${esc(m.name)})</span>` : ''}
-                <button onclick="renameCIMember('${pg.id}',${i})" style="background:none;border:none;cursor:pointer;color:#9BA0E0;font-size:11px;padding:1px 4px;border-radius:3px" title="Namen ändern">✏️</button>
+              <div style="margin-bottom:4px">
+                <label style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em">Anzeigename</label>
+                <input class="form-input" style="font-size:12px;padding:5px 10px;margin-top:2px"
+                  value="${esc(m.displayName||m.name)}"
+                  placeholder="${esc(m.name)}"
+                  onchange="ciSaveMemberName('${pg.id}',${i},this.value)">
+                ${m.displayName && m.displayName !== m.name ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">Original: ${esc(m.name)}</div>` : ''}
               </div>
               <input class="form-input" style="font-size:12px;padding:5px 10px" placeholder="https://www.linkedin.com/in/..."
                 value="${esc(m.profileUrl||'')}"
@@ -6730,6 +6782,9 @@ function renderCIProgramDash(container) {
         <span style="font-size:11px;font-weight:600;color:${prim};display:flex;align-items:center;gap:4px">
           <span style="display:inline-block;width:24px;height:2px;background:${prim};border-top:2px dashed ${prim}"></span>Gesamt
         </span>
+        <span style="font-size:11px;font-weight:600;color:#64748B;display:flex;align-items:center;gap:4px">
+          <span style="display:inline-block;width:24px;border-top:2px dashed #64748B"></span>Ø Durchschnitt
+        </span>
         ${memberStats.map(s=>`<span style="font-size:11px;font-weight:600;color:${s.color};display:flex;align-items:center;gap:4px">
           <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${s.color}"></span>${esc(s.name)}
         </span>`).join('')}
@@ -6850,12 +6905,25 @@ function renderCIProgramDash(container) {
       borderWidth:2, pointRadius:3, tension:0.3, fill:false
     });
 
+    // Durchschnittslinie (horizontal, immer sichtbar)
+    const avgDs = (data, label, forBar) => {
+      const valid = data.filter(v => typeof v === 'number' && !isNaN(v));
+      const avg = valid.length ? Math.round(valid.reduce((a,b)=>a+b,0)/valid.length) : 0;
+      const ds = {
+        label, data: Array(data.length).fill(avg),
+        borderColor:'#64748B', borderWidth:2, borderDash:[6,3],
+        pointRadius:0, fill:false, tension:0, hidden:false, order:-1
+      };
+      if (forBar) ds.type = 'line';
+      return ds;
+    };
+
     // Start: Gesamt sichtbar, alle Member versteckt
     const gestamtDsVisible = (data, label) => ({...gestamtDs(data, label), hidden: false});
     const memberDsHidden = (s, field) => ({...memberDs(s, field), hidden: true});
 
-    mkLine('cCIImpr', [gestamtDsVisible(gestamtImpr,'Gesamt'), ...memberStats.map(s=>memberDsHidden(s,'impr'))]);
-    mkLine('cCIEng',  [gestamtDsVisible(gestamtEng, 'Gesamt'), ...memberStats.map(s=>memberDsHidden(s,'eng'))]);
+    mkLine('cCIImpr', [gestamtDsVisible(gestamtImpr,'Gesamt'), avgDs(gestamtImpr,'Ø Durchschnitt'), ...memberStats.map(s=>memberDsHidden(s,'impr'))]);
+    mkLine('cCIEng',  [gestamtDsVisible(gestamtEng, 'Gesamt'), avgDs(gestamtEng, 'Ø Durchschnitt'), ...memberStats.map(s=>memberDsHidden(s,'eng'))]);
 
     const ctxP = document.getElementById('cCIPosts');
     if (ctxP && allKeys.length) {
@@ -6864,6 +6932,7 @@ function renderCIProgramDash(container) {
         type:'bar',
         data:{ labels:allLabels, datasets: [
           { label:'Gesamt', data:gestamtPosts, backgroundColor:prim+'cc', borderColor:prim, borderWidth:1, hidden:false },
+          avgDs(gestamtPosts, 'Ø Durchschnitt', true),
           ...memberStats.map(s=>({
             label:s.name, data:allKeys.map(k=>s.byKey[k]?.posts||0),
             backgroundColor:s.color+'CC', borderColor:s.color, borderWidth:1, hidden:true
@@ -6885,17 +6954,28 @@ function ciToggleMember(idx) {}
 
 function ciSelectMember(val) {
   const idx = val === '' ? null : parseInt(val);
+  const updateAvgForMember = (ch, memberIdx) => {
+    if (memberIdx === null || !ch.data.datasets[memberIdx+2]) return;
+    const data = ch.data.datasets[memberIdx+2].data;
+    const valid = data.filter(v => typeof v === 'number' && !isNaN(v));
+    const avg = valid.length ? Math.round(valid.reduce((a,b)=>a+b,0)/valid.length) : 0;
+    ch.data.datasets[1].data = Array(data.length).fill(avg);
+  };
   ['cCIImpr','cCIEng'].forEach(id => {
     const c = CHARTS[id]; if (!c) return;
     c.data.datasets.forEach((ds, i) => {
-      ds.hidden = idx === null ? (i !== 0) : (i !== idx + 1);
+      if (idx === null) { ds.hidden = i >= 2; }
+      else { ds.hidden = i === 0 || (i >= 2 && i !== idx + 2); }
     });
+    updateAvgForMember(c, idx);
     c.update();
   });
   const c2 = CHARTS['cCIPosts']; if (!c2) return;
   c2.data.datasets.forEach((ds, i) => {
-    ds.hidden = idx === null ? (i !== 0) : (i !== idx + 1);
+    if (idx === null) { ds.hidden = i >= 2; }
+    else { ds.hidden = i === 0 || (i >= 2 && i !== idx + 2); }
   });
+  updateAvgForMember(c2, idx);
   c2.update();
   ciUpdatePersonKPI();
 }
@@ -6947,23 +7027,33 @@ function ciFilterZeitraumRange() {
   const labels = indices.map(i => allLabels[i]);
 
   // ── Update charts
+  // Dataset layout: [0]=Gesamt, [1]=avgDs, [2..]=members
+  const calcAvg = (data) => { const v = data.filter(x=>!isNaN(x)); return v.length ? Math.round(v.reduce((a,b)=>a+b,0)/v.length) : 0; };
   ['cCIImpr','cCIEng'].forEach(id => {
     const c = CHARTS[id]; if (!c) return;
     c.data.labels = labels;
     const isImpr = id === 'cCIImpr';
     const src = isImpr ? gestamtImpr : gestamtEng;
-    c.data.datasets[0].data = indices.map(i => src[i]);
+    const gestData = indices.map(i => src[i]);
+    c.data.datasets[0].data = gestData;
+    c.data.datasets[1].data = Array(gestData.length).fill(calcAvg(gestData)); // avgDs
     memberStats.forEach((s, mi) => {
-      c.data.datasets[mi+1].data = keys.map(k => s.byKey[k]?.[isImpr?'impr':'eng'] || 0);
+      c.data.datasets[mi+2].data = keys.map(k => s.byKey[k]?.[isImpr?'impr':'eng'] || 0);
     });
     c.update();
   });
   const c2 = CHARTS['cCIPosts']; if (c2) {
     c2.data.labels = labels;
-    c2.data.datasets[0].data = keys.map(k => memberStats.reduce((a,s)=>a+(s.byKey[k]?.posts||0),0));
-    memberStats.forEach((s, mi) => { c2.data.datasets[mi+1].data = keys.map(k => s.byKey[k]?.posts||0); });
+    const gestPosts = keys.map(k => memberStats.reduce((a,s)=>a+(s.byKey[k]?.posts||0),0));
+    c2.data.datasets[0].data = gestPosts;
+    c2.data.datasets[1].data = Array(gestPosts.length).fill(calcAvg(gestPosts)); // avgDs
+    memberStats.forEach((s, mi) => { c2.data.datasets[mi+2].data = keys.map(k => s.byKey[k]?.posts||0); });
     c2.update();
   }
+
+  // Re-apply member selection visibility after data update
+  const selVal = document.getElementById('ciMemberSelect')?.value;
+  if (selVal) ciSelectMember(selVal);
 
   // ── Recalculate KPI totals for selected range
   const tImpr  = keys.reduce((a,k) => a + memberStats.reduce((b,s) => b+(s.byKey[k]?.impr||0), 0), 0);
