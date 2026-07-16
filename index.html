@@ -1404,7 +1404,9 @@ function updateTopbar(view) {
     const isLocal = location.protocol === 'file:';
     ta.innerHTML = `<button class="btn btn-primary btn-sm" onclick="createNewClient()">＋ Neuer Kunde</button>`
       + (isLocal ? `<button class="btn btn-sm" onclick="syncToOnline()" style="margin-left:6px" title="Alle Kundendaten in die Online-App übertragen">☁️ Online synchronisieren</button>` : '')
-      + (isLocal ? `<button class="btn btn-sm" onclick="deployToGitHubPages()" style="margin-left:6px;background:#24292e;color:#fff;border-color:#24292e" title="Aktuelle Version auf GitHub Pages veröffentlichen">🚀 Deploy</button>` : '');
+      + (isLocal ? `<button class="btn btn-sm" onclick="deployToGitHubPages()" style="margin-left:6px;background:#24292e;color:#fff;border-color:#24292e" title="Aktuelle Version auf GitHub Pages veröffentlichen">🚀 Deploy</button>` : '')
+      + `<button class="btn btn-sm" onclick="exportAppData()" style="margin-left:6px" title="Alle Daten als Backup-Datei speichern">💾 Exportieren</button>`
+      + `<button class="btn btn-sm" onclick="importAppData()" style="margin-left:6px" title="Backup-Datei laden">📂 Importieren</button>`;
   } else if (view === 'edit') {
     const c = getClient(ROUTE.clientId);
     bc.innerHTML = `<span onclick="navigate('home')" style="cursor:pointer">Übersicht</span>
@@ -7415,6 +7417,42 @@ function exportCIClientView(pgId) {
   a.download = `Kundenansicht_${name}.html`;
   a.click();
   showToast('Kundenansicht exportiert — Datei per E-Mail oder Link versenden', 'ok');
+}
+
+function exportAppData() {
+  const data = { version: 1, exportedAt: new Date().toISOString(), app: APP };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'LinkedIn_Studio_Backup_' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  showToast('Backup gespeichert ✓', 'ok');
+}
+
+function importAppData() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data.app || !data.app.clients) throw new Error('Ungültiges Format');
+        if (!confirm(`Backup vom ${new Date(data.exportedAt).toLocaleDateString('de-DE')} laden?\n\nDas überschreibt alle aktuellen Daten.`)) return;
+        Object.assign(APP, data.app);
+        saveApp();
+        navigate('home');
+        showToast('Backup erfolgreich geladen ✓', 'ok');
+      } catch(err) {
+        showToast('Fehler beim Laden: ' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
 }
 
 function saveAsHTML() {
