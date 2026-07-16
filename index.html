@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260716-01 -->
+<!-- v20260716-02 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260716-01';
+  const MY_V = 'v20260716-02';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260716-01</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260716-02</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -6785,8 +6785,10 @@ function ciFilterZeitraumRange() {
 
   // ── Update charts
   // Dataset layout: [0]=Gesamt, [1]=avgDs, [2..]=members
-  // Few points (e.g. a single selected month) are hard to see as a thin line — enlarge the dots so the data still reads as "there".
-  const pointR = keys.length === 1 ? 7 : keys.length <= 3 ? 5 : 2;
+  // A line with 1-3 points barely reads as a chart — render as bars instead, like the Beiträge-Chart does.
+  const prim = window._ciPrim || '#5B63FE';
+  const asBar = keys.length <= 3;
+  const pointR = keys.length === 1 ? 7 : 5;
   const calcAvg = (data) => { const v = data.filter(x=>!isNaN(x)); return v.length ? Math.round(v.reduce((a,b)=>a+b,0)/v.length) : 0; };
   ['cCIImpr','cCIEng'].forEach(id => {
     const c = CHARTS[id]; if (!c) return;
@@ -6794,12 +6796,18 @@ function ciFilterZeitraumRange() {
     const isImpr = id === 'cCIImpr';
     const src = isImpr ? gestamtImpr : gestamtEng;
     const gestData = indices.map(i => src[i]);
-    c.data.datasets[0].data = gestData;
-    c.data.datasets[0].pointRadius = pointR;
+    const gestDs = c.data.datasets[0];
+    gestDs.data = gestData;
+    gestDs.type = asBar ? 'bar' : 'line';
+    gestDs.backgroundColor = asBar ? prim + 'cc' : prim + '18';
+    gestDs.pointRadius = asBar ? 0 : pointR;
     c.data.datasets[1].data = Array(gestData.length).fill(calcAvg(gestData)); // avgDs
     memberStats.forEach((s, mi) => {
-      c.data.datasets[mi+2].data = keys.map(k => s.byKey[k]?.[isImpr?'impr':'eng'] || 0);
-      c.data.datasets[mi+2].pointRadius = pointR;
+      const mds = c.data.datasets[mi+2];
+      mds.data = keys.map(k => s.byKey[k]?.[isImpr?'impr':'eng'] || 0);
+      mds.type = asBar ? 'bar' : 'line';
+      mds.backgroundColor = asBar ? s.color + 'cc' : s.color + '22';
+      mds.pointRadius = asBar ? 0 : pointR;
     });
     c.update();
   });
