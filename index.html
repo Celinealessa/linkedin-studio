@@ -6785,6 +6785,8 @@ function ciFilterZeitraumRange() {
 
   // ── Update charts
   // Dataset layout: [0]=Gesamt, [1]=avgDs, [2..]=members
+  // Few points (e.g. a single selected month) are hard to see as a thin line — enlarge the dots so the data still reads as "there".
+  const pointR = keys.length === 1 ? 7 : keys.length <= 3 ? 5 : 2;
   const calcAvg = (data) => { const v = data.filter(x=>!isNaN(x)); return v.length ? Math.round(v.reduce((a,b)=>a+b,0)/v.length) : 0; };
   ['cCIImpr','cCIEng'].forEach(id => {
     const c = CHARTS[id]; if (!c) return;
@@ -6793,9 +6795,11 @@ function ciFilterZeitraumRange() {
     const src = isImpr ? gestamtImpr : gestamtEng;
     const gestData = indices.map(i => src[i]);
     c.data.datasets[0].data = gestData;
+    c.data.datasets[0].pointRadius = pointR;
     c.data.datasets[1].data = Array(gestData.length).fill(calcAvg(gestData)); // avgDs
     memberStats.forEach((s, mi) => {
       c.data.datasets[mi+2].data = keys.map(k => s.byKey[k]?.[isImpr?'impr':'eng'] || 0);
+      c.data.datasets[mi+2].pointRadius = pointR;
     });
     c.update();
   });
