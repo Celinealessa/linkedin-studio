@@ -814,6 +814,17 @@ async function _runGistSync() {
 const APP = loadApp();
 if (!APP.programs) APP.programs = [];
 if (!APP.compares) APP.compares = [];
+// Auto-cleanup: remove CI program members whose name looks like a URL (Favikon image bug)
+(function cleanBadMembers() {
+  const isUrlLike = s => typeof s === 'string' && (s.startsWith('http') || s.includes('amazonaws') || s.includes('favikon'));
+  let dirty = false;
+  (APP.programs || []).forEach(pg => {
+    const before = (pg.members || []).length;
+    pg.members = (pg.members || []).filter(m => !isUrlLike(m.name) && !isUrlLike(m.displayName));
+    if (pg.members.length !== before) dirty = true;
+  });
+  if (dirty) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(APP)); } catch(e) {} }
+})();
 
 // ── PAYBACK Daten — immer aktuell halten (überschreibt alten/kaputten Stand)
 (function ensurePaybackClient() {
