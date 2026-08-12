@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260716-02 -->
+<!-- v20260716-03 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260716-02';
+  const MY_V = 'v20260716-03';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260716-02</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260716-03</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -5153,7 +5153,7 @@ function buildDashHTML(c, ins) {
   const _filteredFlopsKPI = filterPosts(c.flopPosts, c.id);
   // Use postsPerMonth sum from filtered monthly data; fall back to uploaded posts count
   const _ppmTotal = (c.monthly?.postsPerMonth||[]).reduce((a,b)=>a+b,0);
-  const postCount = _ppmTotal > 0 ? _ppmTotal : _filteredPostsKPI.length;
+  const postCount = (c.monthly?.postCountOverride != null) ? c.monthly.postCountOverride : (_ppmTotal > 0 ? _ppmTotal : _filteredPostsKPI.length);
   const recs = c.recommendations;
   const mix  = c.contentMix;
 
@@ -5172,7 +5172,7 @@ function buildDashHTML(c, ins) {
         <div><div class="hero-kpi-val" style="color:${acc}">${totalFollowersNow ? fmt(totalFollowersNow) : '+'+fmt(totalFoll)}</div><div class="hero-kpi-lbl">${totalFollowersNow ? 'Follower gesamt' : 'Neue Follower'}</div></div>
         <div><div class="hero-kpi-val" style="color:${acc}">${avgEngRate.toFixed(1)}%</div><div class="hero-kpi-lbl">Ø Eng. Rate</div></div>
         <div><div class="hero-kpi-val" style="color:${trend==='rückläufig'?'#FF9090':acc}">${trendPct>0?'+':''}${trendPct}%</div><div class="hero-kpi-lbl">Reichweiten-Trend</div></div>
-        <div><div class="hero-kpi-val" style="color:${acc}">${postCount}</div><div class="hero-kpi-lbl">Beiträge</div></div>
+        <div><div class="hero-kpi-val" id="heroPostCount_${c.id}" style="color:${acc}">${postCount}</div><div class="hero-kpi-lbl">Beiträge</div></div>
       </div>
     </div>
   </div>
@@ -5199,9 +5199,14 @@ function buildDashHTML(c, ins) {
       <div class="kpi-val" style="color:${engColor}">${avgEngRate.toFixed(1)}%</div>
       <div class="kpi-sub">${engLabel} · Benchmark: 1–2%</div>
     </div>
-    <div class="kpi-card" style="--k-accent:#7C83FD">
-      <div class="kpi-lbl">Anzahl der Beiträge</div>
-      <div class="kpi-val">${postCount}</div>
+    <div class="kpi-card" style="--k-accent:#7C83FD" ${c._readOnly ? '' : 'title="Klicken zum manuellen Korrigieren"'}>
+      <div class="kpi-lbl">Anzahl der Beiträge${c._readOnly ? '' : ' ✏️'}</div>
+      ${c._readOnly ? `<div class="kpi-val">${postCount}</div>` : `
+      <input type="number" min="0" class="kpi-val" id="postCountInput_${c.id}" value="${postCount}"
+        style="background:transparent;border:none;border-bottom:2px dashed #7C83FD55;width:100%;font:inherit;color:inherit;padding:0"
+        oninput="(function(el){const v=parseInt(el.value)||0;const nMon=${n};const sub=el.closest('.kpi-card').querySelector('.kpi-sub');if(sub)sub.textContent='Ø '+(nMon>0?(v/nMon).toFixed(1):'–')+' / Monat';const h=document.getElementById('heroPostCount_${c.id}');if(h)h.textContent=v;})(this)"
+        onchange="(function(el){const cl=getClient('${c.id}');if(cl&&cl.monthly){cl.monthly.postCountOverride=parseInt(el.value)||0;saveApp();showToast('Beiträge-Anzahl gespeichert ✓','ok')}})(this)"
+        onfocus="this.style.borderBottomColor='#7C83FD'" onblur="this.style.borderBottomColor='#7C83FD55'">`}
       <div class="kpi-sub">Ø ${n > 0 ? (postCount/n).toFixed(1) : '–'} / Monat</div>
     </div>
   </div>`, {accentColor:p});
