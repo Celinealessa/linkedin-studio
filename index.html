@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260814-01 -->
+<!-- v20260814-02 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260814-01';
+  const MY_V = 'v20260814-02';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260814-01</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260814-02</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -3351,13 +3351,14 @@ function parseFavikonCI(wb) {
 
       const dateRaw = r[CI_DATE];
       const pd = parseDate(dateRaw);
-      let sortKey = null, label = null;
+      let sortKey = null, label = null, fullDate = null;
       if (pd) {
         const yr = pd.year, mo = pd.month; // mo is 0-based
         sortKey = yr + '-' + String(mo + 1).padStart(2, '0');
         const monthNames = ['Jan','Feb','Mrz','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
         label = monthNames[mo] + ' ' + String(yr).slice(-2);
         allDates.push(new Date(Date.UTC(yr, mo, pd.day || 1)));
+        if (pd.day) fullDate = sortKey + '-' + String(pd.day).padStart(2, '0');
       }
 
       const likes    = parseNum(r[CI_LIKES]) || 0;
@@ -3377,7 +3378,7 @@ function parseFavikonCI(wb) {
       const type       = String(r[CI_TYPE]||'').trim();
 
       if (!profileUrlMap[name] && profileUrl) profileUrlMap[name] = profileUrl;
-      creatorMap[name].push({ caption, label, sortKey, impr, eng: engRaw, likes, comments, shares, url, type });
+      creatorMap[name].push({ caption, label, sortKey, fullDate, impr, eng: engRaw, likes, comments, shares, url, type });
     });
 
     // Compute date range label
@@ -6495,11 +6496,11 @@ function renderCIProgramDash(container) {
           </div>
           <div id="ciZeitraumCustom" style="display:none;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">
             <label style="font-size:12px;font-weight:600;color:var(--muted)">Von:</label>
-            <input type="month" id="ciZeitraumVon" min="${allKeys[0]||''}" max="${allKeys[allKeys.length-1]||''}" value="${allKeys[0]||''}"
+            <input type="date" id="ciZeitraumVon" min="${monthStart(allKeys[0])}" max="${monthEnd(allKeys[allKeys.length-1])}" value="${monthStart(allKeys[0])}"
               onchange="ciFilterZeitraumRange()"
               style="padding:5px 10px;border-radius:8px;border:1.5px solid ${prim};background:#fff;font-size:13px;font-weight:500;cursor:pointer">
             <label style="font-size:12px;font-weight:600;color:var(--muted)">Bis:</label>
-            <input type="month" id="ciZeitraumBis" min="${allKeys[0]||''}" max="${allKeys[allKeys.length-1]||''}" value="${allKeys[allKeys.length-1]||''}"
+            <input type="date" id="ciZeitraumBis" min="${monthStart(allKeys[0])}" max="${monthEnd(allKeys[allKeys.length-1])}" value="${monthEnd(allKeys[allKeys.length-1])}"
               onchange="ciFilterZeitraumRange()"
               style="padding:5px 10px;border-radius:8px;border:1.5px solid ${prim};background:#fff;font-size:13px;font-weight:500;cursor:pointer">
           </div>
@@ -6555,21 +6556,8 @@ function renderCIProgramDash(container) {
           <th style="text-align:right;padding:8px 6px;color:${prim};font-weight:600">Engagements</th>
           <th style="text-align:right;padding:8px 6px;color:${prim};font-weight:600">Ø Eng-Rate</th>
         </tr></thead>
-        <tbody>
-          ${ranking.map((s,i)=>`
-          <tr style="border-bottom:1px solid var(--border);transition:background .12s" onmouseover="this.style.background='${primLight}'" onmouseout="this.style.background=''">
-            <td style="padding:10px 6px">
-              <span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:${i===0?acc:primLight};color:${i===0?contrastColor(acc):prim};font-weight:700;font-size:12px">${i+1}</span>
-            </td>
-            <td style="padding:10px 6px"><div style="display:flex;align-items:center;gap:8px">
-              <span style="width:10px;height:10px;border-radius:50%;background:${s.color};display:inline-block;flex-shrink:0"></span>
-              <span style="font-weight:600">${esc(s.name)}</span>
-            </div></td>
-            <td style="text-align:right;padding:10px 6px">${fmt(s.totalPosts)}</td>
-            <td style="text-align:right;padding:10px 6px;font-weight:700;color:${prim}">${fmtK(s.totalImpr)}</td>
-            <td style="text-align:right;padding:10px 6px">${fmtK(s.totalEng)}</td>
-            <td style="text-align:right;padding:10px 6px;font-weight:600;color:${s.engRate>=1?'var(--success)':'var(--muted)'}">${s.engRate.toFixed(2)}%</td>
-          </tr>`).join('')}
+        <tbody id="ciRankingBody">
+          ${ciRankingRows(ranking)}
         </tbody>
       </table>
     </div>
@@ -6732,6 +6720,49 @@ function ciSelectMember(val) {
   ciUpdatePersonKPI();
 }
 
+function monthStart(key) { return key ? key + '-01' : ''; }
+function monthEnd(key) {
+  if (!key) return '';
+  const [y, m] = key.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return key + '-' + String(lastDay).padStart(2, '0');
+}
+
+function ciRankingRows(ranking) {
+  const prim = window._ciPrim || '#5B63FE';
+  const acc  = window._ciAcc  || '#FFD100';
+  const primLight = prim + '15';
+  return ranking.map((s,i)=>`
+  <tr style="border-bottom:1px solid var(--border);transition:background .12s" onmouseover="this.style.background='${primLight}'" onmouseout="this.style.background=''">
+    <td style="padding:10px 6px">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:${i===0?acc:primLight};color:${i===0?contrastColor(acc):prim};font-weight:700;font-size:12px">${i+1}</span>
+    </td>
+    <td style="padding:10px 6px"><div style="display:flex;align-items:center;gap:8px">
+      <span style="width:10px;height:10px;border-radius:50%;background:${s.color};display:inline-block;flex-shrink:0"></span>
+      <span style="font-weight:600">${esc(s.name)}</span>
+    </div></td>
+    <td style="text-align:right;padding:10px 6px">${fmt(s.totalPosts)}</td>
+    <td style="text-align:right;padding:10px 6px;font-weight:700;color:${prim}">${fmtK(s.totalImpr)}</td>
+    <td style="text-align:right;padding:10px 6px">${fmtK(s.totalEng)}</td>
+    <td style="text-align:right;padding:10px 6px;font-weight:600;color:${s.engRate>=1?'var(--success)':'var(--muted)'}">${s.engRate.toFixed(2)}%</td>
+  </tr>`).join('');
+}
+
+function ciRenderRanking(keys) {
+  const body = document.getElementById('ciRankingBody');
+  if (!body) return;
+  const d = window._ciChartData;
+  if (!d) return;
+  const { memberStats } = d;
+  const ranking = memberStats.map(s => {
+    const totalImpr  = keys.reduce((a,k) => a + (s.byKey[k]?.impr  || 0), 0);
+    const totalEng   = keys.reduce((a,k) => a + (s.byKey[k]?.eng   || 0), 0);
+    const totalPosts = keys.reduce((a,k) => a + (s.byKey[k]?.posts || 0), 0);
+    return { ...s, totalImpr, totalEng, totalPosts, engRate: totalImpr>0 ? totalEng/totalImpr*100 : 0 };
+  }).sort((a,b)=>b.totalImpr-a.totalImpr);
+  body.innerHTML = ciRankingRows(ranking);
+}
+
 function ciSetZeitraum(val, btn) {
   const prim = window._ciPrim || '#5B63FE';
   const cc   = contrastColor(prim);
@@ -6753,8 +6784,8 @@ function ciSetZeitraum(val, btn) {
   if (!d) return;
   const { allKeys } = d;
   const n = val === 'all' ? allKeys.length : Math.min(parseInt(val), allKeys.length);
-  const von = allKeys[allKeys.length - n] || allKeys[0];
-  const bis = allKeys[allKeys.length - 1];
+  const von = monthStart(allKeys[allKeys.length - n] || allKeys[0]);
+  const bis = monthEnd(allKeys[allKeys.length - 1]);
   const vonEl = document.getElementById('ciZeitraumVon');
   const bisEl = document.getElementById('ciZeitraumBis');
   if (vonEl) vonEl.value = von;
@@ -6769,10 +6800,11 @@ function ciFilterZeitraumRange() {
   if (!d) return;
   const { allKeys, allLabels, memberStats, gestamtImpr, gestamtEng } = d;
 
-  const von = document.getElementById('ciZeitraumVon')?.value || allKeys[0];
-  const bis = document.getElementById('ciZeitraumBis')?.value || allKeys[allKeys.length-1];
+  const von = document.getElementById('ciZeitraumVon')?.value || monthStart(allKeys[0]);
+  const bis = document.getElementById('ciZeitraumBis')?.value || monthEnd(allKeys[allKeys.length-1]);
+  const vonMonth = von.slice(0, 7), bisMonth = bis.slice(0, 7);
 
-  const indices = allKeys.map((k,i) => k >= von && k <= bis ? i : -1).filter(i => i >= 0);
+  const indices = allKeys.map((k,i) => k >= vonMonth && k <= bisMonth ? i : -1).filter(i => i >= 0);
   if (!indices.length) return;
 
   const keys   = indices.map(i => allKeys[i]);
@@ -6780,6 +6812,10 @@ function ciFilterZeitraumRange() {
 
   // ── Update charts
   // Dataset layout: [0]=Gesamt, [1]=avgDs, [2..]=members
+  // A line with 1-3 points barely reads as a chart — render as bars instead, like the Beiträge-Chart does.
+  const prim = window._ciPrim || '#5B63FE';
+  const asBar = keys.length <= 3;
+  const pointR = keys.length === 1 ? 7 : 5;
   const calcAvg = (data) => { const v = data.filter(x=>!isNaN(x)); return v.length ? Math.round(v.reduce((a,b)=>a+b,0)/v.length) : 0; };
   ['cCIImpr','cCIEng'].forEach(id => {
     const c = CHARTS[id]; if (!c) return;
@@ -6787,10 +6823,18 @@ function ciFilterZeitraumRange() {
     const isImpr = id === 'cCIImpr';
     const src = isImpr ? gestamtImpr : gestamtEng;
     const gestData = indices.map(i => src[i]);
-    c.data.datasets[0].data = gestData;
+    const gestDs = c.data.datasets[0];
+    gestDs.data = gestData;
+    gestDs.type = asBar ? 'bar' : 'line';
+    gestDs.backgroundColor = asBar ? prim + 'cc' : prim + '18';
+    gestDs.pointRadius = asBar ? 0 : pointR;
     c.data.datasets[1].data = Array(gestData.length).fill(calcAvg(gestData)); // avgDs
     memberStats.forEach((s, mi) => {
-      c.data.datasets[mi+2].data = keys.map(k => s.byKey[k]?.[isImpr?'impr':'eng'] || 0);
+      const mds = c.data.datasets[mi+2];
+      mds.data = keys.map(k => s.byKey[k]?.[isImpr?'impr':'eng'] || 0);
+      mds.type = asBar ? 'bar' : 'line';
+      mds.backgroundColor = asBar ? s.color + 'cc' : s.color + '22';
+      mds.pointRadius = asBar ? 0 : pointR;
     });
     c.update();
   });
@@ -6830,6 +6874,7 @@ function ciFilterZeitraumRange() {
   if (g('ciBannerPosts'))   g('ciBannerPosts').querySelector('div').textContent   = fmt(tPosts);
   if (g('ciBannerEngRate')) g('ciBannerEngRate').querySelector('div').textContent = eRate;
 
+  ciRenderRanking(keys);
   ciUpdatePersonKPI();
   ciRenderPostsFiltered();
 }
@@ -6879,10 +6924,11 @@ function ciUpdatePersonKPI() {
   const s = memberStats[idx];
   if (!s) { kpiEl.style.display = 'none'; return; }
 
-  // Get current time range from pickers
-  const von = document.getElementById('ciZeitraumVon')?.value || allKeys[0];
-  const bis = document.getElementById('ciZeitraumBis')?.value || allKeys[allKeys.length-1];
-  const filteredKeys = allKeys.filter(k => k >= von && k <= bis);
+  // Get current time range from pickers (date-precise; allKeys are month buckets)
+  const von = document.getElementById('ciZeitraumVon')?.value || monthStart(allKeys[0]);
+  const bis = document.getElementById('ciZeitraumBis')?.value || monthEnd(allKeys[allKeys.length-1]);
+  const vonMonth = von.slice(0, 7), bisMonth = bis.slice(0, 7);
+  const filteredKeys = allKeys.filter(k => k >= vonMonth && k <= bisMonth);
   const filteredLabels = filteredKeys.map(k => allLabels[allKeys.indexOf(k)]);
 
   const totalImpr  = filteredKeys.reduce((a,k) => a + (s.byKey[k]?.impr  || 0), 0);
@@ -6941,19 +6987,21 @@ function ciRenderPostsFiltered() {
   const memberFilter = document.getElementById('ciPostsSelect')?.value || '';
   const sortField    = document.getElementById('ciPostsSortSelect')?.value || 'impr';
 
-  // Get current time range
+  // Get current time range (day-precise)
   const d = window._ciChartData;
   const allKeys = d?.allKeys || [];
-  const von = document.getElementById('ciZeitraumVon')?.value || allKeys[0] || '';
-  const bis = document.getElementById('ciZeitraumBis')?.value || allKeys[allKeys.length-1] || '';
+  const von = document.getElementById('ciZeitraumVon')?.value || monthStart(allKeys[0]) || '';
+  const bis = document.getElementById('ciZeitraumBis')?.value || monthEnd(allKeys[allKeys.length-1]) || '';
+  const vonMonth = von.slice(0, 7), bisMonth = bis.slice(0, 7);
 
   let posts = [...all];
 
-  // Filter by time range if post has sortKey
+  // Filter by time range: exact day when the post has a full date, month bucket otherwise
   if (von && bis) {
     posts = posts.filter(p => {
-      if (!p.sortKey) return true; // keep posts without date
-      return p.sortKey >= von && p.sortKey <= bis;
+      if (p.fullDate) return p.fullDate >= von && p.fullDate <= bis;
+      if (!p.sortKey) return true; // keep posts without any date
+      return p.sortKey >= vonMonth && p.sortKey <= bisMonth;
     });
   }
 
