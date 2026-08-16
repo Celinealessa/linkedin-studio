@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260814-02 -->
+<!-- v20260816-01 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260814-02';
+  const MY_V = 'v20260816-01';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260814-02</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260816-01</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -2431,6 +2431,7 @@ function renderEdit(container) {
   const c = getClient(ROUTE.clientId);
   if (!c) { navigate('home'); return; }
   const ci = c.ci;
+  _lastGoalPeriodKey = 'all';
 
   const logoHtml = ci.logoImg
     ? `<img src="${ci.logoImg}" alt="Logo">`
@@ -2547,11 +2548,16 @@ function renderEdit(container) {
       <div class="edit-section" style="margin-top:14px">
         <div class="edit-section-title">🎯 Ziele <span style="font-size:11px;font-weight:400;color:var(--muted)">— optional, werden im Dashboard als Fortschritt angezeigt</span></div>
         <div class="form-group" style="margin-bottom:12px">
-          <label class="form-label">📅 Ziele für Jahr</label>
-          <select class="form-input" id="goal_year" onchange="switchGoalYear(this.value,'${c.id}')" style="max-width:200px">
-            <option value="all">Gesamt (alle Jahre)</option>
-            ${(()=>{ const yrs=new Set(); (c.monthly?._sortKeys||c.monthly?.labels||[]).forEach(k=>{const y=k.slice(0,4);if(y.match(/^\d{4}$/))yrs.add(y);}); const now=new Date().getFullYear(); [now-1,now,now+1].forEach(y=>yrs.add(String(y))); return [...yrs].sort().map(y=>`<option value="${y}">${y}</option>`).join(''); })()}
-          </select>
+          <label class="form-label">📅 Ziele für Zeitraum</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <select class="form-input" id="goal_periodType" onchange="updateGoalPeriodOptions('${c.id}')" style="max-width:130px">
+              <option value="all">Gesamt</option>
+              <option value="year">Jahr</option>
+              <option value="quarter">Quartal</option>
+              <option value="month">Monat</option>
+            </select>
+            <select class="form-input" id="goal_period" onchange="switchGoalPeriod(this.value,'${c.id}')" style="max-width:180px;display:none"></select>
+          </div>
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -2678,11 +2684,11 @@ function renderEdit(container) {
         <div id="splitSection" style="${c.monthly?'':'display:none'}">
           <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem;margin-bottom:14px">
             <div style="font-size:13px;font-weight:600;margin-bottom:4px">⚖️ Vorher / Nachher Vergleich <span style="font-size:11px;color:var(--muted);font-weight:400">— optional</span></div>
-            <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Ab welchem Monat habt ihr zusammengearbeitet?</div>
-            <select class="form-input" id="splitSel" style="max-width:280px" onchange="autoSaveSplitLabel()">
-              <option value="">— kein Vergleich —</option>
-              ${c.monthly ? c.monthly.labels.map(l=>`<option value="${l}" ${l===c.splitLabel?'selected':''}>${l}</option>`).join('') : ''}
-            </select>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Ab welchem genauen Datum habt ihr zusammengearbeitet?</div>
+            <input type="date" class="form-input" id="splitDate" style="max-width:220px"
+              min="${c.monthly?._sortKeys?.length ? monthStart(c.monthly._sortKeys[0]) : ''}"
+              max="${c.monthly?._sortKeys?.length ? monthEnd(c.monthly._sortKeys[c.monthly._sortKeys.length-1]) : ''}"
+              value="${c.collabStartDate || ''}" onchange="autoSaveSplitLabel()">
           </div>
         </div>
 
@@ -2770,7 +2776,7 @@ function renderEdit(container) {
   else if (!c._manualMode) buildManRows([]);
   restorePostsRows(c.posts || []);
   restoreFlopPostsRows(c.flopPosts || []);
-  updateSplitSelect(c.monthly?.labels || [], c.splitLabel || '');
+  updateSplitSelect(c.monthly?._sortKeys || [], c.collabStartDate || '');
 }
 
 function setStep(step) {
@@ -2828,31 +2834,72 @@ function liveEditCI() {
   c.ci.color2  = document.getElementById('ci_color2')?.value || primary;
   c.ci.color3  = document.getElementById('ci_color3')?.value || primary;
   c.ci.logo    = logo;
-  // Ziele speichern (jahresweise)
+  // Ziele speichern (für aktuell gewählten Zeitraum: Gesamt/Jahr/Quartal/Monat)
   const gi = v => { const n = parseInt(document.getElementById(v)?.value); return n > 0 ? n : null; };
-  const goalYear = document.getElementById('goal_year')?.value || 'all';
+  const goalType = document.getElementById('goal_periodType')?.value || 'all';
+  const goalKey = goalType === 'all' ? 'all' : (document.getElementById('goal_period')?.value || 'all');
   const goalObj = { impressions: gi('goal_impressions'), followers: gi('goal_followers'), engagements: gi('goal_engagements'), leads: gi('goal_leads') };
   if (!c.goalsByYear) c.goalsByYear = {};
-  c.goalsByYear[goalYear] = goalObj;
+  c.goalsByYear[goalKey] = goalObj;
   c.goals = c.goalsByYear['all'] || goalObj; // backward compat
   c.updatedAt  = Date.now();
   saveApp();
 }
 
-function switchGoalYear(year, cid) {
+// Builds the period options {value,label} for a given period type (year/quarter/month)
+function _goalPeriodOptions(type, c) {
+  const sortKeys = c.monthly?._sortKeys || [];
+  const now = new Date().getFullYear();
+  if (type === 'year') {
+    const yrs = new Set(sortKeys.map(k=>k.slice(0,4)).filter(y=>/^\d{4}$/.test(y)));
+    [now-1,now,now+1].forEach(y=>yrs.add(String(y)));
+    return [...yrs].sort().map(y=>({value:y,label:y}));
+  }
+  if (type === 'quarter') {
+    const qs = new Set(sortKeys.map(k=>{ const [y,m]=k.split('-'); return y+'-Q'+Math.ceil(parseInt(m)/3); }));
+    const curQ = Math.ceil((new Date().getMonth()+1)/3);
+    for (let dq=-1; dq<=2; dq++) { let q=curQ+dq, y=now; while(q<1){q+=4;y--;} while(q>4){q-=4;y++;} qs.add(y+'-Q'+q); }
+    return [...qs].sort().map(q=>({value:q,label:q.replace('-',' ')}));
+  }
+  if (type === 'month') {
+    return sortKeys.map((k,i)=>({value:k,label:c.monthly.labels[i]||k}));
+  }
+  return [];
+}
+
+let _lastGoalPeriodKey = 'all';
+function updateGoalPeriodOptions(cid, preserveKey) {
   const c = getClient(cid);
   if (!c) return;
-  // First save current inputs into the previously selected year
+  const type = document.getElementById('goal_periodType')?.value || 'all';
+  const sel = document.getElementById('goal_period');
+  if (!sel) return;
+  if (type === 'all') {
+    sel.style.display = 'none';
+    switchGoalPeriod('all', cid);
+    return;
+  }
+  sel.style.display = '';
+  const opts = _goalPeriodOptions(type, c);
+  sel.innerHTML = opts.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
+  const target = preserveKey && opts.some(o=>o.value===preserveKey) ? preserveKey : (opts[opts.length-1]?.value || '');
+  sel.value = target;
+  switchGoalPeriod(target, cid);
+}
+
+function switchGoalPeriod(key, cid) {
+  const c = getClient(cid);
+  if (!c || !key) return;
+  // Save current inputs into the previously active period, then load the new one
   const gi = v => { const n = parseInt(document.getElementById(v)?.value); return n > 0 ? n : null; };
-  const prevYear = document.getElementById('goal_year')?.value || 'all';
   if (!c.goalsByYear) c.goalsByYear = {};
-  c.goalsByYear[prevYear] = { impressions: gi('goal_impressions'), followers: gi('goal_followers'), engagements: gi('goal_engagements'), leads: gi('goal_leads') };
-  // Load the new year's goals into inputs
-  const g = c.goalsByYear[year] || {};
+  c.goalsByYear[_lastGoalPeriodKey] = { impressions: gi('goal_impressions'), followers: gi('goal_followers'), engagements: gi('goal_engagements'), leads: gi('goal_leads') };
+  const g = c.goalsByYear[key] || {};
   ['impressions','followers','engagements','leads'].forEach(k => {
     const el = document.getElementById('goal_'+k);
     if (el) el.value = g[k] || '';
   });
+  _lastGoalPeriodKey = key;
   saveApp();
   renderSidebar();
 }
@@ -2964,7 +3011,7 @@ function updateManualSplitSel() {
     const v = tr.querySelector('input')?.value.trim();
     if (v) labels.push(v);
   });
-  updateSplitSelect(labels, '');
+  updateSplitSelect([], '');
 }
 
 // ══════════════════════════════════════════
@@ -4570,18 +4617,17 @@ function applyManualData() {
   if (ok) { ok.textContent = `✅ ${d.labels.length} Zeiträume gespeichert`; ok.classList.add('show'); }
   const ss = document.getElementById('splitSection');
   if (ss) ss.style.display = '';
-  updateSplitSelect(d.labels, c.splitLabel||'');
+  updateSplitSelect([], c.collabStartDate||'');
   showToast(`${d.labels.length} Zeiträume gespeichert`, 'ok');
 }
-function updateSplitSelect(labels, current) {
-  const sel = document.getElementById('splitSel');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">— kein Vergleich —</option>';
-  labels.forEach(l => {
-    const o=document.createElement('option'); o.value=l; o.textContent=l;
-    if (l===current) o.selected=true;
-    sel.appendChild(o);
-  });
+function updateSplitSelect(sortKeys, current) {
+  const el = document.getElementById('splitDate');
+  if (!el) return;
+  if (sortKeys.length) {
+    el.min = monthStart(sortKeys[0]);
+    el.max = monthEnd(sortKeys[sortKeys.length-1]);
+  }
+  el.value = current || '';
 }
 
 // ── Save data
@@ -4595,7 +4641,15 @@ function saveDataAndNext() {
   }
   c._manualMode = false; // reset so Excel uploads work normally
   if (!c.monthly?.labels?.length) { showToast('Keine Daten vorhanden','warn'); return; }
-  c.splitLabel = document.getElementById('splitSel')?.value || '';
+  const dateVal = document.getElementById('splitDate')?.value || '';
+  c.collabStartDate = dateVal;
+  if (dateVal && c.monthly?._sortKeys?.length) {
+    const targetMonth = dateVal.slice(0, 7);
+    const idx = c.monthly._sortKeys.findIndex(k => k >= targetMonth);
+    c.splitLabel = idx >= 0 ? c.monthly.labels[idx] : '';
+  } else {
+    c.splitLabel = '';
+  }
   c.updatedAt = Date.now();
   saveApp();
   setStep('posts');
@@ -4845,7 +4899,16 @@ function readPosts() {
 function autoSaveSplitLabel() {
   const c = getClient(ROUTE.clientId);
   if (!c) return;
-  c.splitLabel = document.getElementById('splitSel')?.value || '';
+  const dateVal = document.getElementById('splitDate')?.value || '';
+  c.collabStartDate = dateVal;
+  // Derive the month-bucket label (data is only aggregated monthly) from the exact date for analyze()
+  if (dateVal && c.monthly?._sortKeys?.length) {
+    const targetMonth = dateVal.slice(0, 7);
+    const idx = c.monthly._sortKeys.findIndex(k => k >= targetMonth);
+    c.splitLabel = idx >= 0 ? c.monthly.labels[idx] : '';
+  } else {
+    c.splitLabel = '';
+  }
   c.updatedAt = Date.now();
   saveApp();
 }
@@ -5175,7 +5238,7 @@ function buildDashHTML(c, ins) {
   const _filteredFlopsKPI = filterPosts(c.flopPosts, c.id);
   // Use postsPerMonth sum from filtered monthly data; fall back to uploaded posts count
   const _ppmTotal = (c.monthly?.postsPerMonth||[]).reduce((a,b)=>a+b,0);
-  const postCount = (c.monthly?.postCountOverride != null) ? c.monthly.postCountOverride : (_ppmTotal > 0 ? _ppmTotal : _filteredPostsKPI.length);
+  const postCount = _ppmTotal > 0 ? _ppmTotal : _filteredPostsKPI.length;
   const recs = c.recommendations;
   const mix  = c.contentMix;
 
@@ -5187,14 +5250,14 @@ function buildDashHTML(c, ins) {
     <div class="hero-inner">
       <div>
         <div class="hero-title">LinkedIn Performance${ci.person?'<br>'+ci.person:''}</div>
-        <div class="hero-sub">${ci.period}${c.splitLabel?' · Agentur-Start ab '+c.splitLabel:''}</div>
+        <div class="hero-sub">${ci.period}${c.splitLabel?' · Agentur-Start ab '+(fmtDeDate(c.collabStartDate)||c.splitLabel):''}</div>
       </div>
       <div class="hero-kpis">
         <div><div class="hero-kpi-val" style="color:${acc}">${fmtK(totalImpr)}</div><div class="hero-kpi-lbl">Impressionen</div></div>
         <div><div class="hero-kpi-val" style="color:${acc}">${totalFollowersNow ? fmt(totalFollowersNow) : '+'+fmt(totalFoll)}</div><div class="hero-kpi-lbl">${totalFollowersNow ? 'Follower gesamt' : 'Neue Follower'}</div></div>
         <div><div class="hero-kpi-val" style="color:${acc}">${avgEngRate.toFixed(1)}%</div><div class="hero-kpi-lbl">Ø Eng. Rate</div></div>
         <div><div class="hero-kpi-val" style="color:${trend==='rückläufig'?'#FF9090':acc}">${trendPct>0?'+':''}${trendPct}%</div><div class="hero-kpi-lbl">Reichweiten-Trend</div></div>
-        <div><div class="hero-kpi-val" id="heroPostCount_${c.id}" style="color:${acc}">${postCount}</div><div class="hero-kpi-lbl">Beiträge</div></div>
+        <div><div class="hero-kpi-val" style="color:${acc}">${postCount}</div><div class="hero-kpi-lbl">Beiträge</div></div>
       </div>
     </div>
   </div>
@@ -5221,15 +5284,10 @@ function buildDashHTML(c, ins) {
       <div class="kpi-val" style="color:${engColor}">${avgEngRate.toFixed(1)}%</div>
       <div class="kpi-sub">${engLabel} · Benchmark: 1–2%</div>
     </div>
-    <div class="kpi-card" style="--k-accent:#7C83FD" ${c._readOnly ? '' : 'title="Klicken zum manuellen Korrigieren"'}>
-      <div class="kpi-lbl">Anzahl der Beiträge${c._readOnly ? '' : ' ✏️'}</div>
-      ${c._readOnly ? `<div class="kpi-val">${postCount}</div>` : `
-      <input type="number" min="0" class="kpi-val" id="postCountInput_${c.id}" value="${postCount}"
-        style="background:transparent;border:none;border-bottom:2px dashed #7C83FD55;width:100%;font:inherit;color:inherit;padding:0"
-        oninput="(function(el){const v=parseInt(el.value)||0;const nMon=${n};const sub=el.closest('.kpi-card').querySelector('.kpi-sub');if(sub)sub.textContent='Ø '+(nMon>0?(v/nMon).toFixed(1):'–')+' / Monat';const h=document.getElementById('heroPostCount_${c.id}');if(h)h.textContent=v;})(this)"
-        onchange="(function(el){const cl=getClient('${c.id}');if(cl&&cl.monthly){cl.monthly.postCountOverride=parseInt(el.value)||0;saveApp();showToast('Beiträge-Anzahl gespeichert ✓','ok')}})(this)"
-        onfocus="this.style.borderBottomColor='#7C83FD'" onblur="this.style.borderBottomColor='#7C83FD55'">`}
-      <div class="kpi-sub">Ø ${n > 0 ? (postCount/n).toFixed(1) : '–'} / Monat</div>
+    <div class="kpi-card" style="--k-accent:#7C83FD">
+      <div class="kpi-lbl">Anzahl der Beiträge</div>
+      <div class="kpi-val">${postCount}</div>
+      <div class="kpi-sub">Ø ${n > 0 ? (postCount/n).toFixed(1) : '–'} / Monat${c._readOnly ? '' : ` · <span onclick="navigate('edit','${c.id}')" style="color:#7C83FD;cursor:pointer;font-weight:600;text-decoration:underline">pro Monat bearbeiten ✏️</span>`}</div>
     </div>
   </div>`, {accentColor:p});
 
@@ -5237,10 +5295,16 @@ function buildDashHTML(c, ins) {
   const _activeGoals = (() => {
     const f = getFilter(c.id);
     const gby = c.goalsByYear || {};
-    // Prefer the year matching the "from" filter, then "to" year, then 'all', then c.goals
-    if (f.from) { const y = f.from.slice(0,4); if (gby[y] && Object.values(gby[y]).some(v=>v>0)) return gby[y]; }
-    if (f.to)   { const y = f.to.slice(0,4);   if (gby[y] && Object.values(gby[y]).some(v=>v>0)) return gby[y]; }
-    if (gby['all'] && Object.values(gby['all']).some(v=>v>0)) return gby['all'];
+    const hasVal = o => o && Object.values(o).some(v=>v>0);
+    const quarterOf = k => { const [y,mo] = k.split('-'); return y+'-Q'+Math.ceil(parseInt(mo)/3); };
+    // Prefer the most specific match: exact month → quarter → year, checked for "from" then "to", then 'all', then legacy c.goals
+    for (const k of [f.from, f.to]) {
+      if (!k) continue;
+      if (hasVal(gby[k])) return gby[k];
+      if (hasVal(gby[quarterOf(k)])) return gby[quarterOf(k)];
+      if (hasVal(gby[k.slice(0,4)])) return gby[k.slice(0,4)];
+    }
+    if (hasVal(gby['all'])) return gby['all'];
     return c.goals;
   })();
   if (sec('goals') && _activeGoals && Object.values(_activeGoals).some(v => v > 0)) {
@@ -5301,7 +5365,7 @@ function buildDashHTML(c, ins) {
         <span style="font-size:20px">🤝</span>
         <div style="text-align:left">
           <div style="font-size:14px;font-weight:700">Seit Beginn unserer Zusammenarbeit</div>
-          <div style="font-size:11px;opacity:0.85">ab ${c.splitLabel} · ${afterMonths} Monate · aufklappen für Details</div>
+          <div style="font-size:11px;opacity:0.85">ab ${fmtDeDate(c.collabStartDate)||c.splitLabel} · ${afterMonths} Monate · aufklappen für Details</div>
         </div>
       </div>
       <div class="collab-kpis-row">
@@ -5323,7 +5387,7 @@ function buildDashHTML(c, ins) {
     <div class="collab-body">
       <div style="min-height:0">
         <div style="background:#fff;border:1px solid ${p}33;border-top:none;border-radius:0 0 12px 12px;padding:20px 24px">
-          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;font-weight:600;text-transform:uppercase;letter-spacing:.07em">Gesamtergebnis seit ${c.splitLabel}</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;font-weight:600;text-transform:uppercase;letter-spacing:.07em">Gesamtergebnis seit ${fmtDeDate(c.collabStartDate)||c.splitLabel}</div>
           <div class="collab-body-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
             <div style="background:#F0FBF7;border-radius:10px;padding:14px 16px;text-align:center">
               <div style="font-size:22px;font-weight:800;color:#00A86B">${fmtK(totalAfterImpr)}</div>
@@ -7596,6 +7660,7 @@ function avg(a) { return a.length ? sum(a)/a.length : 0; }
 function fmt(n) { return Math.round(n).toLocaleString('de-DE'); }
 function fmtK(n){ return n>=1000000?(n/1000000).toFixed(1).replace('.',',')+' Mio':n>=1000?(n/1000).toFixed(0)+'K':String(Math.round(n)); }
 function esc(s) { return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function fmtDeDate(iso) { return iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('.') : ''; }
 
 function hexToRgb(hex) {
   hex = hex.replace('#','');
