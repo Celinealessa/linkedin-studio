@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260817-01 -->
+<!-- v20260817-02 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260817-01';
+  const MY_V = 'v20260817-02';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260817-01</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260817-02</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -1475,7 +1475,7 @@ function renderSidebar() {
   const mkItem = c => `
     <button class="sidebar-item ${ROUTE.clientId===c.id ? 'active' : ''}" data-nav="${c.id}"
       onclick="navigate('dash','${c.id}')">
-      <span class="si-icon" style="background:${c.ci.primary};border-radius:5px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${contrastColor(c.ci.primary)}">${c.ci.logo?.charAt(0)||c.ci.client?.charAt(0)||'?'}</span>
+      <span class="si-icon" style="background:${c.ci.primary||'#5B63FE'};border-radius:5px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${contrastColor(c.ci.primary||'#5B63FE')}">${c.ci.logo?.charAt(0)||c.ci.client?.charAt(0)||'?'}</span>
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.ci.client||'(kein Name)'}</span>
       ${c.monthly||c.companyMonthly ? '<span class="si-badge">✓</span>' : ''}
     </button>`;
@@ -1525,15 +1525,16 @@ function renderHome(container) {
   const programs = APP.programs || [];
 
   function clientCard(c) {
+    const cardPrimary = c.ci.primary || '#5B63FE';
     const ins = c.monthly ? analyze(c.monthly, c.splitLabel, c.ci.primary, c.posts, c.flopPosts, c.ci) : null;
     const status = !c.monthly ? 'empty' : 'ready';
     const statusLabel = { empty:'Keine Daten', ready:'Dashboard bereit' }[status];
     const statusClass = { empty:'status-empty', ready:'status-ready' }[status];
     return `
     <div class="client-card" onclick="navigate('dash','${c.id}')">
-      <div class="client-card-stripe" style="background:${c.ci.primary}"></div>
+      <div class="client-card-stripe" style="background:${cardPrimary}"></div>
       <div class="client-card-head">
-        <div class="client-card-logo" style="background:${c.ci.primary};color:${contrastColor(c.ci.primary)}">
+        <div class="client-card-logo" style="background:${cardPrimary};color:${contrastColor(cardPrimary)}">
           ${c.ci.logoImg ? `<img src="${c.ci.logoImg}" alt="">` : (c.ci.logo || c.ci.client?.charAt(0) || '?')}
         </div>
         <div>
@@ -2441,7 +2442,7 @@ function renderEdit(container) {
   <div class="content">
     <div class="edit-header">
       <div class="edit-logo-preview" id="editLogoPreview"
-        style="background:${ci.primary};color:${contrastColor(ci.primary)}">${logoHtml}</div>
+        style="background:${ci.primary||'#5B63FE'};color:${contrastColor(ci.primary||'#5B63FE')}">${logoHtml}</div>
       <div>
         <div class="edit-client-name" id="editClientName">${ci.client || 'Neuer Kunde'}</div>
         <div class="edit-client-sub">${ci.person || 'Kein Ansprechpartner'} · ${ci.period || 'Kein Zeitraum'}</div>
@@ -2512,11 +2513,11 @@ function renderEdit(container) {
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Primärfarbe <span style="font-size:11px;color:var(--muted)">(Kopfleiste &amp; Chart-Balken)</span></label>
-            <input class="form-input" type="color" id="ci_primary" value="${ci.primary}" oninput="liveEditCI()" onfocus="_activeColorPicker='ci_primary'">
+            <input class="form-input" type="color" id="ci_primary" value="${ci.primary||'#5B63FE'}" oninput="liveEditCI()" onfocus="_activeColorPicker='ci_primary'">
           </div>
           <div class="form-group">
             <label class="form-label">Akzentfarbe <span style="font-size:11px;color:var(--muted)">(nur Logo-Hintergrund)</span></label>
-            <input class="form-input" type="color" id="ci_accent" value="${ci.accent}" oninput="liveEditCI()" onfocus="_activeColorPicker='ci_accent'">
+            <input class="form-input" type="color" id="ci_accent" value="${ci.accent||'#FFD100'}" oninput="liveEditCI()" onfocus="_activeColorPicker='ci_accent'">
           </div>
         </div>
         <div style="margin:-4px 0 12px">
@@ -2525,11 +2526,11 @@ function renderEdit(container) {
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Diagrammfarbe 2 <span style="font-size:11px;color:var(--muted)">(Charts &amp; Mix)</span></label>
-            <input class="form-input" type="color" id="ci_color2" value="${ci.color2||ci.primary}" oninput="liveEditCI()" onfocus="_activeColorPicker='ci_color2'">
+            <input class="form-input" type="color" id="ci_color2" value="${ci.color2||ci.primary||'#5B63FE'}" oninput="liveEditCI()" onfocus="_activeColorPicker='ci_color2'">
           </div>
           <div class="form-group">
             <label class="form-label">Diagrammfarbe 3 <span style="font-size:11px;color:var(--muted)">(optional)</span></label>
-            <input class="form-input" type="color" id="ci_color3" value="${ci.color3||ci.primary}" oninput="liveEditCI()" onfocus="_activeColorPicker='ci_color3'">
+            <input class="form-input" type="color" id="ci_color3" value="${ci.color3||ci.primary||'#5B63FE'}" oninput="liveEditCI()" onfocus="_activeColorPicker='ci_color3'">
           </div>
         </div>
         <div class="form-row">
@@ -2542,8 +2543,8 @@ function renderEdit(container) {
             <input class="form-input" type="file" id="ci_logoImg" accept="image/*" onchange="handleLogoUpload(this)" style="padding:5px">
           </div>
         </div>
-        <div class="ci-bar" id="ciBar" style="background:${ci.primary};color:${contrastColor(ci.primary)}">
-          <div style="width:30px;height:30px;background:${ci.accent};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${contrastColor(ci.accent)};flex-shrink:0" id="ciBarLogo">${ci.logo || ci.client?.charAt(0) || 'K'}</div>
+        <div class="ci-bar" id="ciBar" style="background:${ci.primary||'#5B63FE'};color:${contrastColor(ci.primary||'#5B63FE')}">
+          <div style="width:30px;height:30px;background:${ci.accent||'#FFD100'};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${contrastColor(ci.accent||'#FFD100')};flex-shrink:0" id="ciBarLogo">${ci.logo || ci.client?.charAt(0) || 'K'}</div>
           <span id="ciBarName" style="font-weight:600">${ci.client || 'Kundenname'} · LinkedIn Analytics</span>
         </div>
       </div>
@@ -2815,8 +2816,8 @@ function syncBrandColors(cid) {
   showToast('Primärfarbe an Akzentfarbe angeglichen ✓', 'ok');
 }
 function liveEditCI() {
-  const primary = document.getElementById('ci_primary')?.value || '#000';
-  const accent  = document.getElementById('ci_accent')?.value || '#fff';
+  const primary = document.getElementById('ci_primary')?.value || '#5B63FE';
+  const accent  = document.getElementById('ci_accent')?.value || '#FFD100';
   const client  = document.getElementById('ci_client')?.value || 'Kunde';
   const logo    = document.getElementById('ci_logo')?.value || client.charAt(0);
   // Vorschau aktualisieren
@@ -5194,7 +5195,7 @@ function renderDash(container) {
 
   const ci = c.ci;
   const ins = analyze(c.monthly, c.splitLabel, c.ci.primary, c.posts, c.flopPosts, c.ci);
-  const p = ci.primary;
+  const p = ci.primary || '#5B63FE';
 
   const mFiltered = filterMonthly(c.monthly, c.id);
   const insFiltered = analyze(mFiltered, c.splitLabel, c.ci.primary, c.posts, c.flopPosts, c.ci);
@@ -5202,7 +5203,7 @@ function renderDash(container) {
   container.innerHTML = `
     <div class="dash-header" id="dashHdr" style="background:${p}">
       <div class="dh-logo">
-        <div class="dh-logomark" style="background:${ci.accent};color:${contrastColor(ci.accent)}">
+        <div class="dh-logomark" style="background:${ci.accent||'#FFD100'};color:${contrastColor(ci.accent||'#FFD100')}">
           ${ci.logoImg?`<img src="${ci.logoImg}" alt="">`:(ci.logo||ci.client?.charAt(0)||'?')}
         </div>
         <div>
@@ -5236,8 +5237,8 @@ function buildDashHTML(c, ins) {
   const ci = c.ci;
   const m  = c.monthly;
   const { totalImpr, totalFoll, totalEng, avgEngRate, trendPct, trend, engLabel, engColor, beforeAfter, n, totalFollowersNow } = ins;
-  const p = ci.primary;
-  const acc = ci.accent;
+  const p = ci.primary || '#5B63FE';
+  const acc = ci.accent || '#FFD100';
 
   // Recommendations: use stored (manual edits) or auto-generated
   if (!c.recommendations) c.recommendations = ins.recommendations;
@@ -5249,7 +5250,7 @@ function buildDashHTML(c, ins) {
   const _filteredFlopsKPI = filterPosts(c.flopPosts, c.id);
   // Use postsPerMonth sum from filtered monthly data; fall back to uploaded posts count
   const _ppmTotal = (c.monthly?.postsPerMonth||[]).reduce((a,b)=>a+b,0);
-  const postCount = _ppmTotal > 0 ? _ppmTotal : _filteredPostsKPI.length;
+  const postCount = (c.monthly?.postCountOverride != null) ? c.monthly.postCountOverride : (_ppmTotal > 0 ? _ppmTotal : _filteredPostsKPI.length);
   const recs = c.recommendations;
   const mix  = c.contentMix;
 
@@ -5268,7 +5269,7 @@ function buildDashHTML(c, ins) {
         <div><div class="hero-kpi-val" style="color:${acc}">${totalFollowersNow ? fmt(totalFollowersNow) : '+'+fmt(totalFoll)}</div><div class="hero-kpi-lbl">${totalFollowersNow ? 'Follower gesamt' : 'Neue Follower'}</div></div>
         <div><div class="hero-kpi-val" style="color:${acc}">${avgEngRate.toFixed(1)}%</div><div class="hero-kpi-lbl">Ø Eng. Rate</div></div>
         <div><div class="hero-kpi-val" style="color:${trend==='rückläufig'?'#FF9090':acc}">${trendPct>0?'+':''}${trendPct}%</div><div class="hero-kpi-lbl">Reichweiten-Trend</div></div>
-        <div><div class="hero-kpi-val" style="color:${acc}">${postCount}</div><div class="hero-kpi-lbl">Beiträge</div></div>
+        <div><div class="hero-kpi-val" id="heroPostCount_${c.id}" style="color:${acc}">${postCount}</div><div class="hero-kpi-lbl">Beiträge</div></div>
       </div>
     </div>
   </div>
@@ -5295,10 +5296,15 @@ function buildDashHTML(c, ins) {
       <div class="kpi-val" style="color:${engColor}">${avgEngRate.toFixed(1)}%</div>
       <div class="kpi-sub">${engLabel} · Benchmark: 1–2%</div>
     </div>
-    <div class="kpi-card" style="--k-accent:#7C83FD">
-      <div class="kpi-lbl">Anzahl der Beiträge</div>
-      <div class="kpi-val">${postCount}</div>
-      <div class="kpi-sub">Ø ${n > 0 ? (postCount/n).toFixed(1) : '–'} / Monat${c._readOnly ? '' : ` · <span onclick="navigate('edit','${c.id}')" style="color:#7C83FD;cursor:pointer;font-weight:600;text-decoration:underline">pro Monat bearbeiten ✏️</span>`}</div>
+    <div class="kpi-card" style="--k-accent:#7C83FD" ${c._readOnly ? '' : 'title="Klicken zum manuellen Korrigieren"'}>
+      <div class="kpi-lbl">Anzahl der Beiträge${c._readOnly ? '' : ' ✏️'}</div>
+      ${c._readOnly ? `<div class="kpi-val">${postCount}</div>` : `
+      <input type="number" min="0" class="kpi-val" id="postCountInput_${c.id}" value="${postCount}"
+        style="background:transparent;border:none;border-bottom:2px dashed #7C83FD55;width:100%;font:inherit;color:inherit;padding:0"
+        oninput="(function(el){const v=parseInt(el.value)||0;const nMon=${n};const avgEl=document.getElementById('postAvg_${c.id}');if(avgEl)avgEl.textContent=nMon>0?(v/nMon).toFixed(1):'–';const h=document.getElementById('heroPostCount_${c.id}');if(h)h.textContent=v;})(this)"
+        onchange="(function(el){const cl=getClient('${c.id}');if(cl&&cl.monthly){cl.monthly.postCountOverride=parseInt(el.value)||0;saveApp();showToast('Beiträge-Anzahl gespeichert ✓','ok')}})(this)"
+        onfocus="this.style.borderBottomColor='#7C83FD'" onblur="this.style.borderBottomColor='#7C83FD55'">`}
+      <div class="kpi-sub">Ø <span id="postAvg_${c.id}">${n > 0 ? (postCount/n).toFixed(1) : '–'}</span> / Monat${c._readOnly ? '' : ` · <span onclick="navigate('edit','${c.id}')" style="color:#7C83FD;cursor:pointer;font-weight:600;text-decoration:underline">pro Monat bearbeiten ✏️</span>`}</div>
     </div>
   </div>`, {accentColor:p});
 
@@ -5564,7 +5570,7 @@ function buildDashHTML(c, ins) {
 
 function renderCharts(c, ins) {
   const m = c.monthly;
-  const primary = c.ci.primary;
+  const primary = c.ci.primary || '#5B63FE';
   const splitIdx = c.splitLabel ? m.labels.indexOf(c.splitLabel) : -1;
   const gridC = 'rgba(0,0,0,0.05)', txtC = '#6E7A9F';
   const base = { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} };
@@ -6045,7 +6051,7 @@ function renderCIProgramEdit(container) {
           <input type="checkbox" value="${c.id}" ${(pg.clientIds||[]).includes(c.id)?'checked':''}
             onchange="toggleProgramMember('${pg.id}','${c.id}',this.checked)"
             style="width:16px;height:16px;accent-color:#5B63FE">
-          <span style="width:28px;height:28px;border-radius:6px;background:${c.ci.primary};color:${contrastColor(c.ci.primary)};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${c.ci.logo?.charAt(0)||c.ci.client?.charAt(0)||'?'}</span>
+          <span style="width:28px;height:28px;border-radius:6px;background:${c.ci.primary||'#5B63FE'};color:${contrastColor(c.ci.primary||'#5B63FE')};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${c.ci.logo?.charAt(0)||c.ci.client?.charAt(0)||'?'}</span>
           <div>
             <div style="font-size:13px;font-weight:600">${esc(c.ci.client||'(kein Name)')}</div>
             <div style="font-size:11px;color:var(--muted)">${esc(c.ci.person||'')}${c.monthly?.labels?.length?' · '+c.monthly.labels.length+' Monate':' · Keine Daten'}</div>
