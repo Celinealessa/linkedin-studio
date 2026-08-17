@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260816-01 -->
+<!-- v20260817-01 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260816-01';
+  const MY_V = 'v20260817-01';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260816-01</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260817-01</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -890,7 +890,7 @@ if (!APP.compares) APP.compares = [];
 function newClient() {
   return {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
-    ci: { client:'', person:'', period:'', primary:'#1A1F36', accent:'#FFD100', logo:'', logoImg:'', agency:'Branding People GmbH' },
+    ci: { client:'', person:'', period:'', primary:'#5B63FE', accent:'#FFD100', logo:'', logoImg:'', agency:'Branding People GmbH' },
     monthly: null,
     splitLabel: '',
     posts: [],
@@ -2511,13 +2511,16 @@ function renderEdit(container) {
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Primärfarbe</label>
+            <label class="form-label">Primärfarbe <span style="font-size:11px;color:var(--muted)">(Kopfleiste &amp; Chart-Balken)</span></label>
             <input class="form-input" type="color" id="ci_primary" value="${ci.primary}" oninput="liveEditCI()" onfocus="_activeColorPicker='ci_primary'">
           </div>
           <div class="form-group">
-            <label class="form-label">Akzentfarbe (Logo-Hintergrund)</label>
+            <label class="form-label">Akzentfarbe <span style="font-size:11px;color:var(--muted)">(nur Logo-Hintergrund)</span></label>
             <input class="form-input" type="color" id="ci_accent" value="${ci.accent}" oninput="liveEditCI()" onfocus="_activeColorPicker='ci_accent'">
           </div>
+        </div>
+        <div style="margin:-4px 0 12px">
+          <button type="button" class="btn btn-sm" onclick="syncBrandColors('${c.id}')" title="Setzt Primärfarbe = Akzentfarbe, damit Kopfleiste, Charts und Logo überall dieselbe Markenfarbe zeigen">🎨 Primärfarbe an Akzentfarbe angleichen</button>
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -2802,6 +2805,14 @@ function applyColorSwatch(hex) {
   if (!inp) return;
   inp.value = hex;
   liveEditCI();
+}
+function syncBrandColors(cid) {
+  const primaryEl = document.getElementById('ci_primary');
+  const accentEl  = document.getElementById('ci_accent');
+  if (!primaryEl || !accentEl) return;
+  primaryEl.value = accentEl.value;
+  liveEditCI();
+  showToast('Primärfarbe an Akzentfarbe angeglichen ✓', 'ok');
 }
 function liveEditCI() {
   const primary = document.getElementById('ci_primary')?.value || '#000';
