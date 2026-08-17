@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260817-02 -->
+<!-- v20260817-03 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260817-02';
+  const MY_V = 'v20260817-03';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260817-02</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260817-03</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -822,6 +822,19 @@ if (!APP.compares) APP.compares = [];
     const before = (pg.members || []).length;
     pg.members = (pg.members || []).filter(m => !isUrlLike(m.name) && !isUrlLike(m.displayName));
     if (pg.members.length !== before) dirty = true;
+  });
+  if (dirty) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(APP)); } catch(e) {} }
+})();
+
+// Auto-migration: clients whose Primärfarbe is still the old unedited dark default (#1A1F36)
+// but whose Akzentfarbe WAS customized get the Primärfarbe synced to match (fixes "black" charts/header)
+(function migrateStalePrimaryColor() {
+  let dirty = false;
+  (APP.clients || []).forEach(c => {
+    if (c.ci && c.ci.primary === '#1A1F36' && c.ci.accent && c.ci.accent !== '#FFD100') {
+      c.ci.primary = c.ci.accent;
+      dirty = true;
+    }
   });
   if (dirty) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(APP)); } catch(e) {} }
 })();
