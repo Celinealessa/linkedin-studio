@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260817-03 -->
+<!-- v20260817-04 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260817-03';
+  const MY_V = 'v20260817-04';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260817-03</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260817-04</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -830,8 +830,13 @@ if (!APP.compares) APP.compares = [];
 // but whose Akzentfarbe WAS customized get the Primärfarbe synced to match (fixes "black" charts/header)
 (function migrateStalePrimaryColor() {
   let dirty = false;
+  const isStaleDefault  = v => typeof v === 'string' && v.toLowerCase() === '#1a1f36';
+  const isDefaultAccent = v => typeof v === 'string' && v.toLowerCase() === '#ffd100';
   (APP.clients || []).forEach(c => {
-    if (c.ci && c.ci.primary === '#1A1F36' && c.ci.accent && c.ci.accent !== '#FFD100') {
+    if (!c.ci) return;
+    const primaryUnset     = !c.ci.primary || isStaleDefault(c.ci.primary);
+    const accentCustomized = c.ci.accent && !isDefaultAccent(c.ci.accent);
+    if (primaryUnset && accentCustomized) {
       c.ci.primary = c.ci.accent;
       dirty = true;
     }
