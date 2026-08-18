@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260818-02 -->
+<!-- v20260818-03 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260818-02';
+  const MY_V = 'v20260818-03';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260818-02</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260818-03</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -5486,8 +5486,8 @@ function buildDashHTML(c, ins) {
   html += secWrap('📈 Reichweite & Wachstum', 'charts', c.id, `
   <div class="chart-card" style="margin-bottom:14px;border:none;box-shadow:none;padding:0">
     <div class="chart-title">Impressionen pro Monat</div>
-    <div class="chart-sub">${beforeAfter?'Rot = vor Agentur-Start · farbig = nach Agentur-Start':'Monatliche Reichweite im Zeitverlauf'}</div>
-    ${beforeAfter?`<div class="legend"><div class="legend-item"><div class="legend-dot" style="background:#D93B3B"></div>Vor Zusammenarbeit</div><div class="legend-item"><div class="legend-dot" style="background:${p}"></div>Mit Zusammenarbeit</div></div>`:''}
+    <div class="chart-sub">${beforeAfter?'Hell = vor Agentur-Start · volle Markenfarbe = nach Agentur-Start':'Monatliche Reichweite im Zeitverlauf'}</div>
+    ${beforeAfter?`<div class="legend"><div class="legend-item"><div class="legend-dot" style="background:${p}66"></div>Vor Zusammenarbeit</div><div class="legend-item"><div class="legend-dot" style="background:${p}"></div>Mit Zusammenarbeit</div></div>`:''}
     <div style="position:relative;height:220px"><canvas id="cImpr"></canvas></div>
   </div>
   <div class="chart-2">
@@ -5576,13 +5576,13 @@ function renderCharts(c, ins) {
   const base = { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} };
   const xScale = { ticks:{color:txtC,font:{size:10},autoSkip:false,maxRotation:45}, grid:{color:gridC} };
   const yScale = (cb) => ({ ticks:{color:txtC,font:{size:10},callback:cb||(v=>v)}, grid:{color:gridC} });
-  const barColors = m.labels.map((_,i) => splitIdx>=0 ? (i<splitIdx?'#D93B3B':primary) : primary);
+  const barColors = m.labels.map((_,i) => splitIdx>=0 ? (i<splitIdx?primary+'66':primary) : primary);
 
   destroyChart('impr');
   const cImpr = document.getElementById('cImpr');
   if (cImpr) charts.impr = new Chart(cImpr, splitIdx > 0 ? {
     type:'bar', data:{ labels:m.labels, datasets:[
-      { label:'Vorher', data:m.impressions.map((v,i)=>i<splitIdx?v:0), backgroundColor:'#D93B3B', borderRadius:4 },
+      { label:'Vorher', data:m.impressions.map((v,i)=>i<splitIdx?v:0), backgroundColor:primary+'66', borderRadius:4 },
       { label:'Nachher', data:m.impressions.map((v,i)=>i>=splitIdx?v:0), backgroundColor:primary, borderRadius:4 }
     ]}, options:{...base, scales:{ x:{...xScale,stacked:true}, y:{...yScale(v=>v>=1000?(v/1000).toFixed(0)+'K':v),stacked:true} }}
   } : {
