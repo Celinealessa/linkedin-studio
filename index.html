@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260818-01 -->
+<!-- v20260818-02 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260818-01';
+  const MY_V = 'v20260818-02';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260818-01</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260818-02</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -2692,7 +2692,7 @@ function renderEdit(container) {
             <input type="date" class="form-input" id="splitDate" style="max-width:220px"
               min="${c.monthly?._sortKeys?.length ? monthStart(c.monthly._sortKeys[0]) : ''}"
               max="${c.monthly?._sortKeys?.length ? monthEnd(c.monthly._sortKeys[c.monthly._sortKeys.length-1]) : ''}"
-              value="${c.collabStartDate || ''}" onchange="autoSaveSplitLabel()">
+              value="${_resolveCollabStartDate(c)}" onchange="autoSaveSplitLabel()">
           </div>
         </div>
 
@@ -2780,7 +2780,7 @@ function renderEdit(container) {
   else if (!c._manualMode) buildManRows([]);
   restorePostsRows(c.posts || []);
   restoreFlopPostsRows(c.flopPosts || []);
-  updateSplitSelect(c.monthly?._sortKeys || [], c.collabStartDate || '');
+  updateSplitSelect(c.monthly?._sortKeys || [], _resolveCollabStartDate(c));
 }
 
 function setStep(step) {
@@ -4629,7 +4629,7 @@ function applyManualData() {
   if (ok) { ok.textContent = `✅ ${d.labels.length} Zeiträume gespeichert`; ok.classList.add('show'); }
   const ss = document.getElementById('splitSection');
   if (ss) ss.style.display = '';
-  updateSplitSelect([], c.collabStartDate||'');
+  updateSplitSelect([], _resolveCollabStartDate(c));
   showToast(`${d.labels.length} Zeiträume gespeichert`, 'ok');
 }
 function updateSplitSelect(sortKeys, current) {
@@ -7678,6 +7678,17 @@ function fmt(n) { return Math.round(n).toLocaleString('de-DE'); }
 function fmtK(n){ return n>=1000000?(n/1000000).toFixed(1).replace('.',',')+' Mio':n>=1000?(n/1000).toFixed(0)+'K':String(Math.round(n)); }
 function esc(s) { return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 function fmtDeDate(iso) { return iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('.') : ''; }
+// Backward-compat: older clients only have splitLabel (month) from before the exact-date field existed.
+// Reconstruct a date from it instead of an empty value, which would wipe the comparison point on next save.
+function _resolveCollabStartDate(c) {
+  if (c.collabStartDate) return c.collabStartDate;
+  if (c.splitLabel && c.monthly?.labels) {
+    const idx = c.monthly.labels.indexOf(c.splitLabel);
+    const key = idx >= 0 ? (c.monthly._sortKeys||[])[idx] : null;
+    if (key) return monthStart(key);
+  }
+  return '';
+}
 
 function hexToRgb(hex) {
   hex = hex.replace('#','');
