@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260818-08 -->
+<!-- v20260819-01 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260818-08';
+  const MY_V = 'v20260819-01';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260818-08</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260819-01</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -2555,7 +2555,7 @@ function renderEdit(container) {
             <label class="form-label">📅 Von</label>
             <input class="form-input" type="date" id="goal_from" style="max-width:220px"
               min="${c.monthly?._sortKeys?.length ? monthStart(c.monthly._sortKeys[0]) : ''}"
-              value="${c.goals?.from || (c.monthly?._sortKeys?.length ? monthStart(c.monthly._sortKeys[0]) : '')}"
+              value="${c.goals?.from || new Date().toISOString().slice(0,10)}"
               onchange="autoSaveGoals('${c.id}')">
           </div>
           <div class="form-group">
@@ -2565,7 +2565,7 @@ function renderEdit(container) {
               onchange="autoSaveGoals('${c.id}')">
           </div>
         </div>
-        <div style="font-size:11px;color:var(--muted);margin:-4px 0 12px">Der Fortschritt wird aus den echten Monatsdaten in genau diesem Zeitraum berechnet.</div>
+        <div id="goalRangePreview" style="font-size:12px;color:var(--muted);margin:-4px 0 12px;background:#F4F5FF;border-radius:8px;padding:8px 12px"></div>
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">🔭 Ziel Impressionen</label>
@@ -2792,6 +2792,7 @@ function renderEdit(container) {
   restorePostsRows(c.posts || []);
   restoreFlopPostsRows(c.flopPosts || []);
   updateSplitSelect(c.monthly?._sortKeys || [], _resolveCollabStartDate(c));
+  updateGoalRangePreview(c.id);
 }
 
 function setStep(step) {
@@ -2877,7 +2878,26 @@ function autoSaveGoals(cid, silent) {
   };
   c.updatedAt = Date.now();
   saveApp();
+  updateGoalRangePreview(cid);
   if (!silent) showToast('Ziel gespeichert ✓', 'ok');
+}
+
+// Shows a live preview of how many months / how much data actually falls into the chosen Von-Bis range,
+// so a range that accidentally spans "everything" (like the whole history) is obvious immediately.
+function updateGoalRangePreview(cid) {
+  const c = getClient(cid);
+  const el = document.getElementById('goalRangePreview');
+  if (!el) return;
+  if (!c?.monthly?._sortKeys?.length) { el.textContent = ''; return; }
+  const from = document.getElementById('goal_from')?.value || '';
+  const to = document.getElementById('goal_to')?.value || '';
+  const fromM = from ? from.slice(0,7) : null;
+  const toM = to ? to.slice(0,7) : null;
+  const idx = c.monthly._sortKeys.map((k,i) => (!fromM||k>=fromM) && (!toM||k<=toM) ? i : -1).filter(i=>i>=0);
+  if (!idx.length) { el.innerHTML = '⚠️ Keine Monatsdaten in diesem Zeitraum vorhanden.'; return; }
+  const sum = arr => idx.reduce((a,i) => a + (arr[i]||0), 0);
+  const firstL = c.monthly.labels[idx[0]], lastL = c.monthly.labels[idx[idx.length-1]];
+  el.innerHTML = `👀 Vorschau: <strong>${firstL} – ${lastL}</strong> (${idx.length} Monat${idx.length===1?'':'e'}) → bisher <strong>${fmt(sum(c.monthly.impressions))}</strong> Impressionen, <strong>${fmt(sum(c.monthly.engagements))}</strong> Engagements erfasst`;
 }
 
 let _tmpLogoImg = '';
