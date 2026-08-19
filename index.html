@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260818-03 -->
+<!-- v20260818-04 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260818-03';
+  const MY_V = 'v20260818-04';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260818-03</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260818-04</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -2583,6 +2583,12 @@ function renderEdit(container) {
             <input class="form-input" type="number" id="goal_leads" value="${c.goals?.leads||''}" placeholder="z.B. 50" oninput="liveEditCI()">
           </div>
         </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">📅 Ziel-Datum <span style="font-size:11px;color:var(--muted)">(bis wann soll das erreicht sein?)</span></label>
+            <input class="form-input" type="date" id="goal_deadline" value="${c.goals?.deadline||''}" style="max-width:220px" oninput="liveEditCI()">
+          </div>
+        </div>
       </div>
 
       <div style="display:flex;justify-content:flex-end;gap:8px">
@@ -2850,7 +2856,7 @@ function liveEditCI() {
   const gi = v => { const n = parseInt(document.getElementById(v)?.value); return n > 0 ? n : null; };
   const goalType = document.getElementById('goal_periodType')?.value || 'all';
   const goalKey = goalType === 'all' ? 'all' : (document.getElementById('goal_period')?.value || 'all');
-  const goalObj = { impressions: gi('goal_impressions'), followers: gi('goal_followers'), engagements: gi('goal_engagements'), leads: gi('goal_leads') };
+  const goalObj = { impressions: gi('goal_impressions'), followers: gi('goal_followers'), engagements: gi('goal_engagements'), leads: gi('goal_leads'), deadline: document.getElementById('goal_deadline')?.value || null };
   if (!c.goalsByYear) c.goalsByYear = {};
   c.goalsByYear[goalKey] = goalObj;
   c.goals = c.goalsByYear['all'] || goalObj; // backward compat
@@ -2905,12 +2911,14 @@ function switchGoalPeriod(key, cid) {
   // Save current inputs into the previously active period, then load the new one
   const gi = v => { const n = parseInt(document.getElementById(v)?.value); return n > 0 ? n : null; };
   if (!c.goalsByYear) c.goalsByYear = {};
-  c.goalsByYear[_lastGoalPeriodKey] = { impressions: gi('goal_impressions'), followers: gi('goal_followers'), engagements: gi('goal_engagements'), leads: gi('goal_leads') };
+  c.goalsByYear[_lastGoalPeriodKey] = { impressions: gi('goal_impressions'), followers: gi('goal_followers'), engagements: gi('goal_engagements'), leads: gi('goal_leads'), deadline: document.getElementById('goal_deadline')?.value || null };
   const g = c.goalsByYear[key] || {};
   ['impressions','followers','engagements','leads'].forEach(k => {
     const el = document.getElementById('goal_'+k);
     if (el) el.value = g[k] || '';
   });
+  const dlEl = document.getElementById('goal_deadline');
+  if (dlEl) dlEl.value = g.deadline || '';
   _lastGoalPeriodKey = key;
   saveApp();
   renderSidebar();
@@ -5339,11 +5347,17 @@ function buildDashHTML(c, ins) {
     ].filter(item => item.target > 0);
 
     const _goalYearBadge = (()=>{ const f=getFilter(c.id); const y=f.from?f.from.slice(0,4):null; return y?`<span style="background:#EEF0FF;color:#5B63FE;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;margin-left:8px">${y}</span>`:''; })();
+    const _goalDeadline = g.deadline || null;
+    const _daysLeft = _goalDeadline ? Math.ceil((new Date(_goalDeadline+'T00:00:00') - new Date(new Date().toDateString())) / 86400000) : null;
     html += secWrap(`🎯 Ziele & Fortschritt${_goalYearBadge}`, 'goals', c.id, `<div style="display:flex;flex-direction:column;gap:14px">
+        ${_goalDeadline ? `<div style="font-size:12px;color:${_daysLeft<0?'#E03B3B':'var(--muted)'};background:${_daysLeft<0?'#FFE8E8':'#F4F5FF'};border-radius:8px;padding:8px 12px;font-weight:600">
+          📅 Ziel-Datum: ${fmtDeDate(_goalDeadline)} ${_daysLeft>=0 ? `· noch ${_daysLeft} Tag${_daysLeft===1?'':'e'}` : '· Datum überschritten'}
+        </div>` : ''}
         ${goalItems.map(item => {
           const pct = item.current != null ? Math.min(100, Math.round(item.current / item.target * 100)) : null;
           const done = item.reached != null;
           const barColor = done ? '#00A86B' : p;
+          const remaining = (item.current != null && !done) ? Math.max(0, item.target - item.current) : null;
           return `<div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
               <span style="font-size:13px;font-weight:600;color:var(--text)">${item.icon} ${item.label}</span>
@@ -5355,7 +5369,7 @@ function buildDashHTML(c, ins) {
             ${pct != null ? `<div style="background:#F0F1F8;border-radius:999px;height:8px;overflow:hidden">
               <div style="width:${pct}%;height:100%;background:${barColor};border-radius:999px;transition:width .5s ease"></div>
             </div>
-            <div style="font-size:11px;color:${done?'#00A86B':barColor};margin-top:3px;font-weight:600">${pct}%${done ? ' — Ziel erreicht 🎉' : ' des Ziels erreicht'}</div>` : ''}
+            <div style="font-size:11px;color:${done?'#00A86B':barColor};margin-top:3px;font-weight:600">${pct}%${done ? ' — Ziel erreicht 🎉' : ' des Ziels erreicht'}${remaining != null ? ` · noch ${fmt(remaining)} bis zum Ziel` : ''}</div>` : ''}
           </div>`;
         }).join('')}
       </div>`, {accentColor:p});
