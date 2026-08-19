@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260818-04 -->
+<!-- v20260818-05 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260818-04';
+  const MY_V = 'v20260818-05';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260818-04</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260818-05</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -2566,27 +2566,27 @@ function renderEdit(container) {
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">🔭 Ziel Impressionen</label>
-            <input class="form-input" type="number" id="goal_impressions" value="${c.goals?.impressions||''}" placeholder="z.B. 500000" oninput="liveEditCI()">
+            <input class="form-input" type="number" id="goal_impressions" value="${c.goals?.impressions||''}" placeholder="z.B. 500000" onchange="autoSaveGoals('${c.id}')">
           </div>
           <div class="form-group">
             <label class="form-label">👥 Ziel Follower</label>
-            <input class="form-input" type="number" id="goal_followers" value="${c.goals?.followers||''}" placeholder="z.B. 10000" oninput="liveEditCI()">
+            <input class="form-input" type="number" id="goal_followers" value="${c.goals?.followers||''}" placeholder="z.B. 10000" onchange="autoSaveGoals('${c.id}')">
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">💬 Ziel Engagements</label>
-            <input class="form-input" type="number" id="goal_engagements" value="${c.goals?.engagements||''}" placeholder="z.B. 5000" oninput="liveEditCI()">
+            <input class="form-input" type="number" id="goal_engagements" value="${c.goals?.engagements||''}" placeholder="z.B. 5000" onchange="autoSaveGoals('${c.id}')">
           </div>
           <div class="form-group">
             <label class="form-label">🎯 Ziel Leads / Anfragen</label>
-            <input class="form-input" type="number" id="goal_leads" value="${c.goals?.leads||''}" placeholder="z.B. 50" oninput="liveEditCI()">
+            <input class="form-input" type="number" id="goal_leads" value="${c.goals?.leads||''}" placeholder="z.B. 50" onchange="autoSaveGoals('${c.id}')">
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">📅 Ziel-Datum <span style="font-size:11px;color:var(--muted)">(bis wann soll das erreicht sein?)</span></label>
-            <input class="form-input" type="date" id="goal_deadline" value="${c.goals?.deadline||''}" style="max-width:220px" oninput="liveEditCI()">
+            <input class="form-input" type="date" id="goal_deadline" value="${c.goals?.deadline||''}" style="max-width:220px" onchange="autoSaveGoals('${c.id}')">
           </div>
         </div>
       </div>
@@ -2922,6 +2922,20 @@ function switchGoalPeriod(key, cid) {
   _lastGoalPeriodKey = key;
   saveApp();
   renderSidebar();
+}
+
+// Saves the goal fields for the currently active period immediately (mirrors the color fields' auto-save)
+function autoSaveGoals(cid) {
+  const c = getClient(cid);
+  if (!c) return;
+  const gi = v => { const n = parseInt(document.getElementById(v)?.value); return n > 0 ? n : null; };
+  if (!c.goalsByYear) c.goalsByYear = {};
+  const goalObj = { impressions: gi('goal_impressions'), followers: gi('goal_followers'), engagements: gi('goal_engagements'), leads: gi('goal_leads'), deadline: document.getElementById('goal_deadline')?.value || null };
+  c.goalsByYear[_lastGoalPeriodKey] = goalObj;
+  c.goals = c.goalsByYear['all'] || goalObj; // backward compat
+  c.updatedAt = Date.now();
+  saveApp();
+  showToast('Ziel gespeichert ✓', 'ok');
 }
 
 let _tmpLogoImg = '';
