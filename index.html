@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260819-02 -->
+<!-- v20260819-03 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260819-02';
+  const MY_V = 'v20260819-03';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260819-02</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260819-03</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -5591,13 +5591,21 @@ function buildDashHTML(c, ins) {
     </div>
   </div>`);
 
+  const _mixSummary = mix.length ? `${mix.length} Content-Typen${mix[0]?.title ? ' · Top: '+mix[0].title : ''}` : '';
   html += secWrap('🎨 Content-Mix', 'contentMix', c.id, `
-  <div class="mix-grid">${mix.map((mx,i)=>`<div class="mix-card">
-      <button class="mix-edit-btn" onclick="editMix(${i})">✏️</button>
-      <div class="mix-num" style="color:${mx.color}">${mx.num}</div>
-      <div class="mix-title">${mx.title}</div>
-      <div class="mix-sub">${mx.sub}</div>
-    </div>`).join('')}</div>`);
+      <button onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.collab-arrow').style.transform=this.nextElementSibling.classList.contains('open')?'rotate(180deg)':'rotate(0deg)'"
+        style="width:100%;display:flex;align-items:center;justify-content:space-between;background:none;border:none;cursor:pointer;padding:0;font-family:inherit;text-align:left">
+        <span style="font-size:12px;color:var(--muted);font-weight:600">${_mixSummary}</span>
+        <span class="collab-arrow" style="font-size:16px;transition:transform .25s;color:var(--muted)">▾</span>
+      </button>
+      <div class="collab-body"><div style="padding-top:12px">
+        <div class="mix-grid">${mix.map((mx,i)=>`<div class="mix-card">
+            <button class="mix-edit-btn" onclick="editMix(${i})">✏️</button>
+            <div class="mix-num" style="color:${mx.color}">${mx.num}</div>
+            <div class="mix-title">${mx.title}</div>
+            <div class="mix-sub">${mx.sub}</div>
+          </div>`).join('')}</div>
+      </div></div>`);
 
   html += `<div style="text-align:center;font-size:11px;color:var(--muted);padding:2rem 0 0;border-top:1px solid var(--border);margin-top:2rem">
     Erstellt von <strong style="color:${p}">${ci.agency||'Branding People'}</strong> · LinkedIn Analytics · ${ci.period||''}
