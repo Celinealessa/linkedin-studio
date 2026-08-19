@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260818-06 -->
+<!-- v20260818-07 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260818-06';
+  const MY_V = 'v20260818-07';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260818-06</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260818-07</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -2432,7 +2432,6 @@ function renderEdit(container) {
   const c = getClient(ROUTE.clientId);
   if (!c) { navigate('home'); return; }
   const ci = c.ci;
-  _lastGoalPeriodKey = 'all';
 
   const logoHtml = ci.logoImg
     ? `<img src="${ci.logoImg}" alt="Logo">`
@@ -2551,18 +2550,22 @@ function renderEdit(container) {
       <!-- Ziele -->
       <div class="edit-section" style="margin-top:14px">
         <div class="edit-section-title">🎯 Ziele <span style="font-size:11px;font-weight:400;color:var(--muted)">— optional, werden im Dashboard als Fortschritt angezeigt</span></div>
-        <div class="form-group" style="margin-bottom:12px">
-          <label class="form-label">📅 Ziele für Zeitraum</label>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <select class="form-input" id="goal_periodType" onchange="updateGoalPeriodOptions('${c.id}')" style="max-width:130px">
-              <option value="all">Gesamt</option>
-              <option value="year">Jahr</option>
-              <option value="quarter">Quartal</option>
-              <option value="month">Monat</option>
-            </select>
-            <select class="form-input" id="goal_period" onchange="switchGoalPeriod(this.value,'${c.id}')" style="max-width:180px;display:none"></select>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">📅 Von</label>
+            <input class="form-input" type="date" id="goal_from" style="max-width:220px"
+              min="${c.monthly?._sortKeys?.length ? monthStart(c.monthly._sortKeys[0]) : ''}"
+              value="${c.goals?.from || (c.monthly?._sortKeys?.length ? monthStart(c.monthly._sortKeys[0]) : '')}"
+              onchange="autoSaveGoals('${c.id}')">
+          </div>
+          <div class="form-group">
+            <label class="form-label">📅 Bis <span style="font-size:11px;color:var(--muted)">(= Ziel-Datum / Deadline)</span></label>
+            <input class="form-input" type="date" id="goal_to" style="max-width:220px"
+              value="${c.goals?.to || ''}"
+              onchange="autoSaveGoals('${c.id}')">
           </div>
         </div>
+        <div style="font-size:11px;color:var(--muted);margin:-4px 0 12px">Der Fortschritt wird aus den echten Monatsdaten in genau diesem Zeitraum berechnet.</div>
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">🔭 Ziel Impressionen</label>
@@ -2581,12 +2584,6 @@ function renderEdit(container) {
           <div class="form-group">
             <label class="form-label">🎯 Ziel Leads / Anfragen</label>
             <input class="form-input" type="number" id="goal_leads" value="${c.goals?.leads||''}" placeholder="z.B. 50" onchange="autoSaveGoals('${c.id}')">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">📅 Ziel-Datum <span style="font-size:11px;color:var(--muted)">(bis wann soll das erreicht sein?)</span></label>
-            <input class="form-input" type="date" id="goal_deadline" value="${c.goals?.deadline||''}" style="max-width:220px" onchange="autoSaveGoals('${c.id}')">
           </div>
         </div>
       </div>
@@ -2852,90 +2849,25 @@ function liveEditCI() {
   c.ci.color2  = document.getElementById('ci_color2')?.value || primary;
   c.ci.color3  = document.getElementById('ci_color3')?.value || primary;
   c.ci.logo    = logo;
-  // Ziele speichern (für aktuell gewählten Zeitraum: Gesamt/Jahr/Quartal/Monat)
-  const gi = v => { const n = parseInt(document.getElementById(v)?.value); return n > 0 ? n : null; };
-  const goalType = document.getElementById('goal_periodType')?.value || 'all';
-  const goalKey = goalType === 'all' ? 'all' : (document.getElementById('goal_period')?.value || 'all');
-  const goalObj = { impressions: gi('goal_impressions'), followers: gi('goal_followers'), engagements: gi('goal_engagements'), leads: gi('goal_leads'), deadline: document.getElementById('goal_deadline')?.value || null };
-  if (!c.goalsByYear) c.goalsByYear = {};
-  c.goalsByYear[goalKey] = goalObj;
-  c.goals = c.goalsByYear['all'] || goalObj; // backward compat
-  c.updatedAt  = Date.now();
-  saveApp();
+  // Ziele speichern (mit explizitem Von-Bis-Zeitraum)
+  autoSaveGoals(c.id, true);
 }
 
-// Builds the period options {value,label} for a given period type (year/quarter/month)
-function _goalPeriodOptions(type, c) {
-  const sortKeys = c.monthly?._sortKeys || [];
-  const now = new Date().getFullYear();
-  if (type === 'year') {
-    const yrs = new Set(sortKeys.map(k=>k.slice(0,4)).filter(y=>/^\d{4}$/.test(y)));
-    [now-1,now,now+1].forEach(y=>yrs.add(String(y)));
-    return [...yrs].sort().map(y=>({value:y,label:y}));
-  }
-  if (type === 'quarter') {
-    const qs = new Set(sortKeys.map(k=>{ const [y,m]=k.split('-'); return y+'-Q'+Math.ceil(parseInt(m)/3); }));
-    const curQ = Math.ceil((new Date().getMonth()+1)/3);
-    for (let dq=-1; dq<=2; dq++) { let q=curQ+dq, y=now; while(q<1){q+=4;y--;} while(q>4){q-=4;y++;} qs.add(y+'-Q'+q); }
-    return [...qs].sort().map(q=>({value:q,label:q.replace('-',' ')}));
-  }
-  if (type === 'month') {
-    return sortKeys.map((k,i)=>({value:k,label:c.monthly.labels[i]||k}));
-  }
-  return [];
-}
-
-let _lastGoalPeriodKey = 'all';
-function updateGoalPeriodOptions(cid, preserveKey) {
-  const c = getClient(cid);
-  if (!c) return;
-  const type = document.getElementById('goal_periodType')?.value || 'all';
-  const sel = document.getElementById('goal_period');
-  if (!sel) return;
-  if (type === 'all') {
-    sel.style.display = 'none';
-    switchGoalPeriod('all', cid);
-    return;
-  }
-  sel.style.display = '';
-  const opts = _goalPeriodOptions(type, c);
-  sel.innerHTML = opts.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
-  const target = preserveKey && opts.some(o=>o.value===preserveKey) ? preserveKey : (opts[opts.length-1]?.value || '');
-  sel.value = target;
-  switchGoalPeriod(target, cid);
-}
-
-function switchGoalPeriod(key, cid) {
-  const c = getClient(cid);
-  if (!c || !key) return;
-  // Save current inputs into the previously active period, then load the new one
-  const gi = v => { const n = parseInt(document.getElementById(v)?.value); return n > 0 ? n : null; };
-  if (!c.goalsByYear) c.goalsByYear = {};
-  c.goalsByYear[_lastGoalPeriodKey] = { impressions: gi('goal_impressions'), followers: gi('goal_followers'), engagements: gi('goal_engagements'), leads: gi('goal_leads'), deadline: document.getElementById('goal_deadline')?.value || null };
-  const g = c.goalsByYear[key] || {};
-  ['impressions','followers','engagements','leads'].forEach(k => {
-    const el = document.getElementById('goal_'+k);
-    if (el) el.value = g[k] || '';
-  });
-  const dlEl = document.getElementById('goal_deadline');
-  if (dlEl) dlEl.value = g.deadline || '';
-  _lastGoalPeriodKey = key;
-  saveApp();
-  renderSidebar();
-}
-
-// Saves the goal fields for the currently active period immediately (mirrors the color fields' auto-save)
-function autoSaveGoals(cid) {
+// Saves the goal fields (4 numeric targets + Von/Bis range) immediately, like the color fields.
+// The Von/Bis range defines exactly which months count toward progress on the dashboard.
+function autoSaveGoals(cid, silent) {
   const c = getClient(cid);
   if (!c) return;
   const gi = v => { const n = parseInt(document.getElementById(v)?.value); return n > 0 ? n : null; };
-  if (!c.goalsByYear) c.goalsByYear = {};
-  const goalObj = { impressions: gi('goal_impressions'), followers: gi('goal_followers'), engagements: gi('goal_engagements'), leads: gi('goal_leads'), deadline: document.getElementById('goal_deadline')?.value || null };
-  c.goalsByYear[_lastGoalPeriodKey] = goalObj;
-  c.goals = c.goalsByYear['all'] || goalObj; // backward compat
+  c.goals = {
+    impressions: gi('goal_impressions'), followers: gi('goal_followers'),
+    engagements: gi('goal_engagements'), leads: gi('goal_leads'),
+    from: document.getElementById('goal_from')?.value || null,
+    to: document.getElementById('goal_to')?.value || null
+  };
   c.updatedAt = Date.now();
   saveApp();
-  showToast('Ziel gespeichert ✓', 'ok');
+  if (!silent) showToast('Ziel gespeichert ✓', 'ok');
 }
 
 let _tmpLogoImg = '';
@@ -5330,42 +5262,34 @@ function buildDashHTML(c, ins) {
     </div>
   </div>`, {accentColor:p});
 
-  // ── Ziele-Fortschritt — wähle Ziele für aktiven Filterzeitraum
-  const _activeGoals = (() => {
-    const f = getFilter(c.id);
-    const gby = c.goalsByYear || {};
-    const hasVal = o => o && Object.values(o).some(v=>v>0);
-    const quarterOf = k => { const [y,mo] = k.split('-'); return y+'-Q'+Math.ceil(parseInt(mo)/3); };
-    // Prefer the most specific match: exact month → quarter → year, checked for "from" then "to", then 'all', then legacy c.goals
-    for (const k of [f.from, f.to]) {
-      if (!k) continue;
-      if (hasVal(gby[k])) return gby[k];
-      if (hasVal(gby[quarterOf(k)])) return gby[quarterOf(k)];
-      if (hasVal(gby[k.slice(0,4)])) return gby[k.slice(0,4)];
-    }
-    if (hasVal(gby['all'])) return gby['all'];
-    return c.goals;
-  })();
-  if (sec('goals') && _activeGoals && Object.values(_activeGoals).some(v => v > 0)) {
+  // ── Ziele-Fortschritt — berechnet aus den echten Monatsdaten im Von-Bis-Zeitraum des Ziels
+  const _activeGoals = c.goals;
+  if (sec('goals') && _activeGoals && Object.values(_activeGoals).some(v => typeof v === 'number' && v > 0)) {
     const g = _activeGoals;
     const monthly = c.monthly;
-    // Kumulierte Werte berechnen + Monat des Erreichens finden
+    const sortKeys = monthly._sortKeys || [];
+    const gFromMonth = g.from ? g.from.slice(0,7) : null;
+    const gToMonth = g.to ? g.to.slice(0,7) : null;
+    const rangeIdx = sortKeys.map((k,i) => (!gFromMonth || k >= gFromMonth) && (!gToMonth || k <= gToMonth) ? i : -1).filter(i => i >= 0);
+    const sumInRange = arr => rangeIdx.reduce((a,i) => a + (arr[i]||0), 0);
+    const rangeLastLabel = rangeIdx.length ? monthly.labels[rangeIdx[rangeIdx.length-1]] : null;
+    // Kumulierte Werte im Zeitraum berechnen + Monat des Erreichens finden
     const goalItems = [
-      { key:'impressions', label:'Impressionen', icon:'🔭', target:g.impressions, current:totalImpr,
-        reached: (() => { let cum=0; for(let i=0;i<monthly.labels.length;i++){ cum+=monthly.impressions[i]; if(cum>=g.impressions) return monthly.labels[i]; } return null; })() },
-      { key:'followers', label:'Follower', icon:'👥', target:g.followers, current: totalFollowersNow || totalFoll,
-        reached: (() => { if(totalFollowersNow && totalFollowersNow >= g.followers) return monthly.labels[monthly.labels.length-1]; let cum=0; for(let i=0;i<monthly.labels.length;i++){ cum+=monthly.followers[i]; if(cum>=g.followers) return monthly.labels[i]; } return null; })() },
-      { key:'engagements', label:'Engagements', icon:'💬', target:g.engagements, current:totalEng,
-        reached: (() => { let cum=0; for(let i=0;i<monthly.labels.length;i++){ cum+=monthly.engagements[i]; if(cum>=g.engagements) return monthly.labels[i]; } return null; })() },
+      { key:'impressions', label:'Impressionen', icon:'🔭', target:g.impressions, current: sumInRange(monthly.impressions),
+        reached: (() => { let cum=0; for (const i of rangeIdx) { cum+=monthly.impressions[i]; if(cum>=g.impressions) return monthly.labels[i]; } return null; })() },
+      { key:'followers', label:'Follower', icon:'👥', target:g.followers, current: totalFollowersNow || sumInRange(monthly.followers),
+        reached: (() => { if(totalFollowersNow && totalFollowersNow >= g.followers) return rangeLastLabel; let cum=0; for (const i of rangeIdx) { cum+=monthly.followers[i]; if(cum>=g.followers) return monthly.labels[i]; } return null; })() },
+      { key:'engagements', label:'Engagements', icon:'💬', target:g.engagements, current: sumInRange(monthly.engagements),
+        reached: (() => { let cum=0; for (const i of rangeIdx) { cum+=monthly.engagements[i]; if(cum>=g.engagements) return monthly.labels[i]; } return null; })() },
       { key:'leads', label:'Leads / Anfragen', icon:'🎯', target:g.leads, current:null, reached:null }
     ].filter(item => item.target > 0);
 
-    const _goalYearBadge = (()=>{ const f=getFilter(c.id); const y=f.from?f.from.slice(0,4):null; return y?`<span style="background:#EEF0FF;color:#5B63FE;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;margin-left:8px">${y}</span>`:''; })();
-    const _goalDeadline = g.deadline || null;
+    const _goalRangeBadge = (g.from||g.to) ? `<span style="background:#EEF0FF;color:#5B63FE;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;margin-left:8px">${g.from?fmtDeDate(g.from):'Start'} – ${g.to?fmtDeDate(g.to):'offen'}</span>` : '';
+    const _goalDeadline = g.to || null;
     const _daysLeft = _goalDeadline ? Math.ceil((new Date(_goalDeadline+'T00:00:00') - new Date(new Date().toDateString())) / 86400000) : null;
     const _goalsDoneCount = goalItems.filter(i => i.reached != null).length;
     const _goalSummary = `${_goalsDoneCount}/${goalItems.length} erreicht${_goalDeadline ? (_daysLeft>=0 ? ` · noch ${_daysLeft} Tag${_daysLeft===1?'':'e'}` : ' · Datum überschritten') : ''}`;
-    html += secWrap(`🎯 Ziele & Fortschritt${_goalYearBadge}`, 'goals', c.id, `
+    html += secWrap(`🎯 Ziele & Fortschritt${_goalRangeBadge}`, 'goals', c.id, `
       <button onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.collab-arrow').style.transform=this.nextElementSibling.classList.contains('open')?'rotate(180deg)':'rotate(0deg)'"
         style="width:100%;display:flex;align-items:center;justify-content:space-between;background:none;border:none;cursor:pointer;padding:0;font-family:inherit;text-align:left">
         <span style="font-size:12px;color:var(--muted);font-weight:600">${_goalSummary}</span>
