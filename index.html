@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260818-07 -->
+<!-- v20260818-08 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260818-07';
+  const MY_V = 'v20260818-08';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260818-07</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260818-08</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -2580,6 +2580,14 @@ function renderEdit(container) {
           <div class="form-group">
             <label class="form-label">💬 Ziel Engagements</label>
             <input class="form-input" type="number" id="goal_engagements" value="${c.goals?.engagements||''}" placeholder="z.B. 5000" onchange="autoSaveGoals('${c.id}')">
+            <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
+              ${[['likes','👍 Likes'],['comments','💬 Kommentare'],['shares','🔁 Shares']].map(([k,label]) => {
+                const checked = !c.goals?.engComponents || c.goals.engComponents.includes(k);
+                return `<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer">
+                  <input type="checkbox" id="goal_eng_${k}" ${checked?'checked':''} onchange="autoSaveGoals('${c.id}')" style="accent-color:#5B63FE">${label}
+                </label>`;
+              }).join('')}
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">🎯 Ziel Leads / Anfragen</label>
@@ -2859,11 +2867,13 @@ function autoSaveGoals(cid, silent) {
   const c = getClient(cid);
   if (!c) return;
   const gi = v => { const n = parseInt(document.getElementById(v)?.value); return n > 0 ? n : null; };
+  const engComponents = ['likes','comments','shares'].filter(k => document.getElementById('goal_eng_'+k)?.checked !== false);
   c.goals = {
     impressions: gi('goal_impressions'), followers: gi('goal_followers'),
     engagements: gi('goal_engagements'), leads: gi('goal_leads'),
     from: document.getElementById('goal_from')?.value || null,
-    to: document.getElementById('goal_to')?.value || null
+    to: document.getElementById('goal_to')?.value || null,
+    engComponents: engComponents.length < 3 ? engComponents : null // null = alle (Standard, nutzt vorhandene monatliche Summe)
   };
   c.updatedAt = Date.now();
   saveApp();
@@ -5273,14 +5283,32 @@ function buildDashHTML(c, ins) {
     const rangeIdx = sortKeys.map((k,i) => (!gFromMonth || k >= gFromMonth) && (!gToMonth || k <= gToMonth) ? i : -1).filter(i => i >= 0);
     const sumInRange = arr => rangeIdx.reduce((a,i) => a + (arr[i]||0), 0);
     const rangeLastLabel = rangeIdx.length ? monthly.labels[rangeIdx[rangeIdx.length-1]] : null;
+    // Engagements: entweder die vorhandene Monatssumme, oder — falls Likes/Kommentare/Shares einzeln
+    // abgewählt wurden — direkt aus den Einzelposts im Zeitraum neu zusammengerechnet.
+    const engCustomCurrent = () => {
+      const posts = [...(c.posts||[]), ...(c.flopPosts||[])];
+      return posts.reduce((sum,post) => {
+        const k = postLabelToSortKey(post.label);
+        if (k && ((gFromMonth && k < gFromMonth) || (gToMonth && k > gToMonth))) return sum; // hat Datum, liegt aber ausserhalb
+        let v = 0;
+        if (g.engComponents.includes('likes'))    v += post.likes    || 0;
+        if (g.engComponents.includes('comments')) v += post.comments || 0;
+        if (g.engComponents.includes('shares'))   v += post.shares   || 0;
+        return sum + v;
+      }, 0);
+    };
+    const engCurrent = g.engComponents ? engCustomCurrent() : sumInRange(monthly.engagements);
     // Kumulierte Werte im Zeitraum berechnen + Monat des Erreichens finden
     const goalItems = [
       { key:'impressions', label:'Impressionen', icon:'🔭', target:g.impressions, current: sumInRange(monthly.impressions),
         reached: (() => { let cum=0; for (const i of rangeIdx) { cum+=monthly.impressions[i]; if(cum>=g.impressions) return monthly.labels[i]; } return null; })() },
       { key:'followers', label:'Follower', icon:'👥', target:g.followers, current: totalFollowersNow || sumInRange(monthly.followers),
         reached: (() => { if(totalFollowersNow && totalFollowersNow >= g.followers) return rangeLastLabel; let cum=0; for (const i of rangeIdx) { cum+=monthly.followers[i]; if(cum>=g.followers) return monthly.labels[i]; } return null; })() },
-      { key:'engagements', label:'Engagements', icon:'💬', target:g.engagements, current: sumInRange(monthly.engagements),
-        reached: (() => { let cum=0; for (const i of rangeIdx) { cum+=monthly.engagements[i]; if(cum>=g.engagements) return monthly.labels[i]; } return null; })() },
+      { key:'engagements', label:'Engagements'+(g.engComponents?` (${g.engComponents.map(k=>({likes:'Likes',comments:'Kommentare',shares:'Shares'}[k])).join('+')})`:''), icon:'💬', target:g.engagements, current: engCurrent,
+        reached: (() => {
+          if (g.engComponents) return engCurrent >= g.engagements ? rangeLastLabel : null;
+          let cum=0; for (const i of rangeIdx) { cum+=monthly.engagements[i]; if(cum>=g.engagements) return monthly.labels[i]; } return null;
+        })() },
       { key:'leads', label:'Leads / Anfragen', icon:'🎯', target:g.leads, current:null, reached:null }
     ].filter(item => item.target > 0);
 
