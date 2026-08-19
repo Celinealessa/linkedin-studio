@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260818-05 -->
+<!-- v20260818-06 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260818-05';
+  const MY_V = 'v20260818-06';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260818-05</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260818-06</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -5363,7 +5363,15 @@ function buildDashHTML(c, ins) {
     const _goalYearBadge = (()=>{ const f=getFilter(c.id); const y=f.from?f.from.slice(0,4):null; return y?`<span style="background:#EEF0FF;color:#5B63FE;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;margin-left:8px">${y}</span>`:''; })();
     const _goalDeadline = g.deadline || null;
     const _daysLeft = _goalDeadline ? Math.ceil((new Date(_goalDeadline+'T00:00:00') - new Date(new Date().toDateString())) / 86400000) : null;
-    html += secWrap(`🎯 Ziele & Fortschritt${_goalYearBadge}`, 'goals', c.id, `<div style="display:flex;flex-direction:column;gap:14px">
+    const _goalsDoneCount = goalItems.filter(i => i.reached != null).length;
+    const _goalSummary = `${_goalsDoneCount}/${goalItems.length} erreicht${_goalDeadline ? (_daysLeft>=0 ? ` · noch ${_daysLeft} Tag${_daysLeft===1?'':'e'}` : ' · Datum überschritten') : ''}`;
+    html += secWrap(`🎯 Ziele & Fortschritt${_goalYearBadge}`, 'goals', c.id, `
+      <button onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.collab-arrow').style.transform=this.nextElementSibling.classList.contains('open')?'rotate(180deg)':'rotate(0deg)'"
+        style="width:100%;display:flex;align-items:center;justify-content:space-between;background:none;border:none;cursor:pointer;padding:0;font-family:inherit;text-align:left">
+        <span style="font-size:12px;color:var(--muted);font-weight:600">${_goalSummary}</span>
+        <span class="collab-arrow" style="font-size:16px;transition:transform .25s;color:var(--muted)">▾</span>
+      </button>
+      <div class="collab-body"><div style="padding-top:12px;display:flex;flex-direction:column;gap:14px">
         ${_goalDeadline ? `<div style="font-size:12px;color:${_daysLeft<0?'#E03B3B':'var(--muted)'};background:${_daysLeft<0?'#FFE8E8':'#F4F5FF'};border-radius:8px;padding:8px 12px;font-weight:600">
           📅 Ziel-Datum: ${fmtDeDate(_goalDeadline)} ${_daysLeft>=0 ? `· noch ${_daysLeft} Tag${_daysLeft===1?'':'e'}` : '· Datum überschritten'}
         </div>` : ''}
@@ -5386,7 +5394,7 @@ function buildDashHTML(c, ins) {
             <div style="font-size:11px;color:${done?'#00A86B':barColor};margin-top:3px;font-weight:600">${pct}%${done ? ' — Ziel erreicht 🎉' : ' des Ziels erreicht'}${remaining != null ? ` · noch ${fmt(remaining)} bis zum Ziel` : ''}</div>` : ''}
           </div>`;
         }).join('')}
-      </div>`, {accentColor:p});
+      </div></div>`, {accentColor:p});
   }
 
   // ── "Seit Zusammenarbeit" Zusammenfassungs-Banner
