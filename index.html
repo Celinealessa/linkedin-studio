@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260819-01 -->
+<!-- v20260819-02 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260819-01';
+  const MY_V = 'v20260819-02';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260819-01</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260819-02</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -4805,16 +4805,39 @@ function switchPostView(mode) {
   document.getElementById('postViewFlop').style.display = isTop ? 'none' : '';
   const chart = document.getElementById('persPostsChart');
   if (chart) chart.style.display = isTop ? '' : 'none';
-  document.getElementById('btnShowTop').style.background  = isTop ? '#5B63FE' : '#fff';
-  document.getElementById('btnShowTop').style.color       = isTop ? '#fff' : 'var(--muted)';
-  document.getElementById('btnShowFlop').style.background = isTop ? '#fff' : '#C0392B';
-  document.getElementById('btnShowFlop').style.color      = isTop ? 'var(--muted)' : '#fff';
+  const btnTop = document.getElementById('btnShowTop');
+  if (btnTop) { btnTop.style.background = isTop ? '#5B63FE' : '#fff'; btnTop.style.color = isTop ? '#fff' : 'var(--muted)'; }
+  const btnFlop = document.getElementById('btnShowFlop');
+  if (btnFlop) { btnFlop.style.background = isTop ? '#fff' : '#C0392B'; btnFlop.style.color = isTop ? 'var(--muted)' : '#fff'; }
   // Show/hide sort buttons (only relevant for top posts)
   const sb = document.getElementById('persSortBtns');
   if (sb) sb.style.display = isTop ? 'flex' : 'none';
 }
 
-function _persPostRow(post, i, sortKey, isFlop) {
+function toggleHideFlopTab(cid, checked) {
+  const c = getClient(cid);
+  if (!c) return;
+  c.hideFlopTab = checked;
+  saveApp();
+  navigate('dash', cid);
+}
+
+function deleteFlopPost(idx) {
+  const post = (window._persFlops||[])[idx];
+  if (!post) return;
+  const c = getClient(ROUTE.clientId);
+  if (!c || !c.flopPosts) return;
+  const realIdx = c.flopPosts.indexOf(post);
+  if (realIdx < 0) return;
+  if (!confirm('Diesen Flop-Post wirklich löschen?')) return;
+  c.flopPosts.splice(realIdx, 1);
+  saveApp();
+  window._persFlops.splice(idx, 1);
+  persRenderFlopList();
+  showToast('Flop-Post gelöscht', 'ok');
+}
+
+function _persPostRow(post, i, sortKey, isFlop, flopIdx) {
   const p = window._persPrimary || '#5B63FE';
   const val = sortKey === 'eng' ? (post.eng||0) : (post.impr||0);
   const valLbl = sortKey === 'eng' ? 'Engagement' : 'Impressionen';
@@ -4833,6 +4856,7 @@ function _persPostRow(post, i, sortKey, isFlop) {
     <div class="post-pill" style="background:${tm.bg};color:${tm.col}">${tm.label}</div>
     ${post.url?`<a href="${post.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="flex-shrink:0;background:#0A66C2;color:#fff;padding:5px 12px;border-radius:7px;font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap">↗</a>`:''}
     <div class="post-impr" style="color:${isFlop?'#C0392B':p}">${fmt(val)}<div style="font-size:9px;color:var(--muted);font-weight:400">${valLbl}</div></div>
+    ${(isFlop && !window._persReadOnly) ? `<button onclick="event.stopPropagation();deleteFlopPost(${flopIdx})" title="Flop-Post löschen" style="flex-shrink:0;background:none;border:1px solid #F5C6CB;color:#C0392B;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer">🗑️</button>` : ''}
   </div>`;
 }
 
@@ -4855,7 +4879,7 @@ function persRenderFlopList() {
   const shown = window._persFlopShown || 5;
   const visible = all.slice(0, shown);
   const remaining = all.length - shown;
-  el.innerHTML = `<div class="posts-list">${visible.map((p,i)=>_persPostRow(p,i,'impr',true)).join('')}</div>` +
+  el.innerHTML = `<div class="posts-list">${visible.map((p,i)=>_persPostRow(p,i,'impr',true,window._persFlops.indexOf(p))).join('')}</div>` +
     (remaining > 0 ? `<button class="btn btn-sm" onclick="window._persFlopShown=(window._persFlopShown||5)+5;persRenderFlopList()" style="margin-top:10px;width:100%">Mehr anzeigen (${Math.min(remaining,5)} von ${remaining} weiteren)</button>` : '');
 }
 
@@ -5523,18 +5547,24 @@ function buildDashHTML(c, ins) {
     window._persPostSort   = 'impr';
     window._persClientId   = c.id;
     window._persPrimary    = p;
+    window._persReadOnly   = !!c._readOnly;
 
     html += secWrap('🏆 Top-Posts & Flop-Posts', 'topPosts', c.id, `
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-    <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden">
-      <button id="btnShowTop" onclick="switchPostView('top')"
-        style="padding:6px 16px;font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;background:#5B63FE;color:#fff;transition:background .15s">
-        🏆 Top-Posts
-      </button>
-      <button id="btnShowFlop" onclick="switchPostView('flop')"
-        style="padding:6px 16px;font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;background:#fff;color:var(--muted);transition:background .15s">
-        📉 Flop-Posts
-      </button>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+        <button id="btnShowTop" onclick="switchPostView('top')"
+          style="padding:6px 16px;font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;background:#5B63FE;color:#fff;transition:background .15s">
+          🏆 Top-Posts
+        </button>
+        ${(c._readOnly && c.hideFlopTab) ? '' : `<button id="btnShowFlop" onclick="switchPostView('flop')"
+          style="padding:6px 16px;font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;background:#fff;color:var(--muted);transition:background .15s">
+          📉 Flop-Posts
+        </button>`}
+      </div>
+      ${!c._readOnly ? `<label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer;white-space:nowrap">
+        <input type="checkbox" ${c.hideFlopTab?'checked':''} onchange="toggleHideFlopTab('${c.id}',this.checked)" style="accent-color:#5B63FE">Flop-Posts für Kunden verstecken
+      </label>` : ''}
     </div>
     <div id="persSortBtns" style="display:flex;gap:6px">
       <button id="persSortImpr" onclick="persSortPosts('impr')" class="btn btn-sm" style="background:${p};color:#fff;border-color:${p}">▼ Impressionen</button>
