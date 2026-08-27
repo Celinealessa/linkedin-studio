@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20260819-03 -->
+<!-- v20260827-01 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -10,7 +10,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260819-03';
+  const MY_V = 'v20260827-01';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -668,7 +668,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260819-03</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260827-01</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -3619,8 +3619,12 @@ function parseLinkedInCompanyPage(wb) {
       const hasDate = rowStr.includes('datum') || rowStr.includes('date') || rowStr.includes('day');
       const hasImpr = rowStr.includes('impress') || rowStr.includes('views') || rowStr.includes('reach');
       if (hasDate && hasImpr) { hRowIdx = i; break; }
-      // Also accept any row that looks like it has at least 3 numeric-column headers
-      if ((rowStr.includes('datum') || rowStr.includes('date')) && kRows[i].length >= 3) { hRowIdx = i; break; }
+      // Also accept any row that looks like it has at least 3 numeric-column headers.
+      // Guard against LinkedIn's disclaimer/description row (a single long prose cell that happens
+      // to mention "Datum" in a sentence) being mistaken for the real header — require several
+      // actually populated cells, not just a long row array padded with empties.
+      const nonEmptyCells = kRows[i].filter(c => String(c||'').trim() !== '').length;
+      if ((rowStr.includes('datum') || rowStr.includes('date')) && nonEmptyCells >= 3) { hRowIdx = i; break; }
     }
     if (hRowIdx === -1) {
       // Last resort: find first row with a date-like value in col 0
