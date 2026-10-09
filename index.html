@@ -1,16 +1,17 @@
 <!DOCTYPE html>
-<!-- v20260827-03 -->
+<!-- v20261009-01 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
 <meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20260827-03';
+  const MY_V = 'v20261009-01';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -684,7 +685,7 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20260827-03</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20261009-01</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -1169,7 +1170,7 @@ async function copyShareLink(clientId) {
       const res = await fetch('https://api.github.com/gists', {
         method: 'POST',
         headers: { 'Authorization': `token ${_GH_TOKEN()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: `LinkedIn Dashboard: ${c.ci.client||'Kunde'}`, public: true, files: { 'ci_dashboard.json': { content: JSON.stringify(payload) } } })
+        body: JSON.stringify({ description: 'LinkedIn Studio', public: false, files: { 'ci_dashboard.json': { content: JSON.stringify(payload) } } })
       });
       if (!res.ok) throw new Error('GitHub Fehler ' + res.status);
       const data = await res.json();
@@ -1242,7 +1243,7 @@ async function copyGroupShareLink(groupName) {
       const res = await fetch('https://api.github.com/gists', {
         method: 'POST',
         headers: { 'Authorization': `token ${_GH_TOKEN()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: `LinkedIn Gruppe: ${groupName}`, public: true, files: { 'ci_dashboard.json': { content: JSON.stringify(payload) } } })
+        body: JSON.stringify({ description: 'LinkedIn Studio', public: false, files: { 'ci_dashboard.json': { content: JSON.stringify(payload) } } })
       });
       if (!res.ok) throw new Error('GitHub Fehler ' + res.status);
       const data = await res.json();
@@ -1555,6 +1556,7 @@ function updateTopbar(view) {
     ta.innerHTML = `<button class="btn btn-primary btn-sm" onclick="createNewClient()">＋ Neuer Kunde</button>`
       + (isLocal ? `<button class="btn btn-sm" onclick="syncToOnline()" style="margin-left:6px" title="Alle Kundendaten in die Online-App übertragen">☁️ Online synchronisieren</button>` : '')
       + (isLocal ? `<button class="btn btn-sm" onclick="deployToGitHubPages()" style="margin-left:6px;background:#24292e;color:#fff;border-color:#24292e" title="Aktuelle Version auf GitHub Pages veröffentlichen">🚀 Deploy</button>` : '')
+      + `<button class="btn btn-sm" onclick="protectShareLinks()" style="margin-left:6px" title="Ersetzt alle öffentlich auffindbaren Links (Google!) durch private Links und löscht die alten">🔒 Links schützen</button>`
       + `<button class="btn btn-sm" onclick="exportAppData()" style="margin-left:6px" title="Alle Daten als Backup-Datei speichern">💾 Exportieren</button>`
       + `<button class="btn btn-sm" onclick="importAppData()" style="margin-left:6px" title="Backup-Datei laden">📂 Importieren</button>`;
   } else if (view === 'edit') {
@@ -2293,8 +2295,8 @@ function _postToJsonBlob(payload, title) {
     method: 'POST',
     headers: { 'Authorization': `token ${_GH_TOKEN()}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      description: title || 'LinkedIn Dashboard Share',
-      public: true,
+      description: 'LinkedIn Studio',
+      public: false,
       files: { 'ci_dashboard.json': { content: JSON.stringify(payload) } }
     })
   })
@@ -7621,6 +7623,66 @@ function _ensureGHToken() {
   return false;
 }
 
+// ── Datenschutz: bisher erzeugte Share-Gists waren ÖFFENTLICH (von Google indexierbar).
+// Ersetzt sie durch private Gists (nicht auffindbar, nur per Link erreichbar) und löscht die öffentlichen.
+// Fasst ausschließlich Gists mit der App-Datei ci_dashboard.json an — andere Gists des Accounts bleiben unberührt.
+async function protectShareLinks() {
+  if (!_ensureGHToken()) return;
+  if (!confirm('🔒 Links schützen\n\nBisher erstellte Kunden-/Gruppen-/Programm-/Vergleichs-Links sind ÖFFENTLICH und über Google auffindbar.\n\nDiese Funktion:\n• ersetzt sie durch private, nicht auffindbare Links (gleiche Funktion, neue URL)\n• LÖSCHT die alten öffentlichen Links endgültig\n\n⚠️ Bereits verschickte Links funktionieren danach NICHT mehr. Neue Links erzeugst du wieder über "Kunden-Link" / "Gruppen-Link" und schickst sie neu raus.\n\nJetzt ausführen?')) return;
+  const hdr = { 'Authorization': `token ${_GH_TOKEN()}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github+json' };
+  showToast('🔒 Prüfe öffentliche Links…', 'warn');
+  try {
+    // 1) alle Gists des Accounts holen (paginiert), nur öffentliche App-Gists behalten
+    let all = [];
+    for (let page = 1; page <= 30; page++) {
+      const r = await fetch(`https://api.github.com/gists?per_page=100&page=${page}`, { headers: hdr });
+      if (!r.ok) throw new Error('GitHub Fehler ' + r.status + (r.status === 401 ? ' (Token ungültig)' : ''));
+      const arr = await r.json();
+      all = all.concat(arr);
+      if (arr.length < 100) break;
+    }
+    const pub = all.filter(g => g.public && g.files && g.files['ci_dashboard.json']);
+    if (!pub.length) { showToast('✅ Keine öffentlichen Links gefunden — alles bereits privat', 'ok'); return; }
+
+    // 2) gespeicherte Referenzen sammeln, damit die App danach auf die neuen privaten Gists zeigt
+    const refs = {};
+    const addRef = (id, setter) => { if (id) (refs[id] = refs[id] || []).push(setter); };
+    (APP.clients  || []).forEach(c  => addRef(c.ci?.shareBlobId,  nid => { c.ci.shareBlobId = nid; }));
+    (APP.programs || []).forEach(pg => addRef(pg.ci?.shareBlobId, nid => { pg.ci.shareBlobId = nid; }));
+    Object.keys(APP.groupShareBlobIds || {}).forEach(name => addRef(APP.groupShareBlobIds[name], nid => { APP.groupShareBlobIds[name] = nid; }));
+
+    let migrated = 0, deleted = 0, failed = 0;
+    for (const g of pub) {
+      try {
+        if (refs[g.id]) {
+          // vollständigen Inhalt holen (die Listen-API kürzt große Dateien)
+          const fr = await fetch(`https://api.github.com/gists/${g.id}`, { headers: hdr });
+          if (!fr.ok) throw new Error('lesen ' + fr.status);
+          const f = (await fr.json()).files['ci_dashboard.json'];
+          let content = f.content;
+          if (f.truncated && f.raw_url) content = await (await fetch(f.raw_url)).text();
+          // neues privates Gist anlegen — erst wenn das klappt, wird das alte gelöscht
+          const cr = await fetch('https://api.github.com/gists', { method: 'POST', headers: hdr,
+            body: JSON.stringify({ description: 'LinkedIn Studio', public: false, files: { 'ci_dashboard.json': { content } } }) });
+          if (!cr.ok) throw new Error('anlegen ' + cr.status);
+          const nid = (await cr.json()).id;
+          if (!nid) throw new Error('keine neue ID');
+          refs[g.id].forEach(set => set(nid));
+          saveApp();
+          migrated++;
+        }
+        // altes öffentliches Gist löschen (inkl. Waisen ohne Referenz, z.B. alte Vergleichs-Links)
+        const dr = await fetch(`https://api.github.com/gists/${g.id}`, { method: 'DELETE', headers: hdr });
+        if (!dr.ok && dr.status !== 404) throw new Error('löschen ' + dr.status);
+        deleted++;
+      } catch (e) { console.warn('[protectShareLinks]', g.id, e.message); failed++; }
+    }
+    alert(`🔒 Fertig\n\n• ${deleted} öffentliche Links gelöscht\n• ${migrated} davon durch private Links ersetzt\n${failed ? `• ⚠️ ${failed} Fehler — Funktion einfach nochmal ausführen\n` : ''}\nNächste Schritte:\n1. Neue Links über "Kunden-Link" / "Gruppen-Link" erzeugen und neu versenden\n2. Google-Einträge entfernen: search.google.com/search-console/remove-outdated-content (die alten Gist-URLs dort eintragen)`);
+  } catch (e) {
+    showToast('❌ Links schützen fehlgeschlagen: ' + e.message, 'warn');
+  }
+}
+
 async function deployToGitHubPages() {
   if (!_ensureGHToken()) return;
   const REPO = 'celinealessa/linkedin-studio';
@@ -7678,8 +7740,8 @@ async function ciCreateBlob(pg) {
     method: 'POST',
     headers: { 'Authorization': `token ${_GH_TOKEN()}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      description: `CI Dashboard: ${pg.name}`,
-      public: true,
+      description: 'LinkedIn Studio',
+      public: false,
       files: { 'ci_dashboard.json': { content: JSON.stringify({ type:'ciprogram', program: pg }) } }
     })
   });
@@ -7747,7 +7809,7 @@ async function copyCIShareLink(pgId) {
       const res = await fetch('https://api.github.com/gists', {
         method: 'POST',
         headers: { 'Authorization': `token ${_GH_TOKEN()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: `CI Dashboard: ${pg.name}`, public: true, files: { 'ci_dashboard.json': { content: payload } } })
+        body: JSON.stringify({ description: 'LinkedIn Studio', public: false, files: { 'ci_dashboard.json': { content: payload } } })
       });
       if (!res.ok) throw new Error('GitHub Fehler ' + res.status);
       const data = await res.json();
