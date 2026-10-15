@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20261015-01 -->
+<!-- v20261015-02 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -11,7 +11,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20261015-01';
+  const MY_V = 'v20261015-02';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -686,7 +686,7 @@ body {
     </button>
 
     <div id="cloudStatus" style="display:none;padding:8px 16px;font-size:11px;color:rgba(255,255,255,.6);border-top:1px solid rgba(255,255,255,.08)"></div>
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20261015-01</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20261015-02</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -743,7 +743,10 @@ const STORAGE_KEY = 'linkedin_studio_v2';
 
 // ── Team-Cloud (Supabase). Solange url/anonKey leer sind, läuft die App unverändert rein lokal.
 // Eintragen nach der Einrichtung (siehe TEAM_ZUGANG.md). anonKey ist per Design öffentlich — NIEMALS den service_role-Key hier eintragen!
-const CLOUD_CFG = { url: '', anonKey: '' };
+// Team-Cloud (leer = App läuft rein lokal). Entweder Supabase { url, anonKey } oder Microsoft 365:
+// ms: { clientId, tenantId, siteUrl: 'https://FIRMA.sharepoint.com/sites/TEAM', folder: 'LinkedInStudio' }
+const CLOUD_CFG = { url: '', anonKey: '', ms: null };
+function _cloudCfgOn() { return !!((CLOUD_CFG.url && CLOUD_CFG.anonKey) || (CLOUD_CFG.ms && CLOUD_CFG.ms.clientId && CLOUD_CFG.ms.tenantId && CLOUD_CFG.ms.siteUrl)); }
 
 function loadApp() {
   // 1. Eingebettete Daten im HTML (Desktop-Datei, immer aktuell)
@@ -853,7 +856,7 @@ if (!APP.compares) APP.compares = [];
 (function ensurePaybackClient() {
   // Wenn der User diesen Client explizit gelöscht hat, nicht neu erstellen
   if ((APP.deletedClientIds || []).includes('payback2025')) return;
-  if (CLOUD_CFG.url) return; // Cloud-Modus: Daten kommen aus der gemeinsamen Datenbank
+  if (_cloudCfgOn()) return; // Cloud-Modus: Daten kommen aus der gemeinsamen Datenbank
   const paybackMonthly = {"labels":["Jun 25","Jul 25","Aug 25","Sep 25","Okt 25","Nov 25","Dez 25","Jan 26","Feb 26","Mrz 26","Apr 26","Mai 26","Jun 26"],"impressions":[17874,9363,4208,63803,67830,42019,154526,54329,58040,38940,49931,93292,4833],"engagements":[542,303,204,1704,1542,858,1660,1087,1120,1113,1417,969,120],"followers":[79,45,64,456,234,171,378,203,184,229,543,287,12],"postsPerMonth":[0,0,0,0,0,0,0,0,0,0,0,0,0],"_sortKeys":["2025-06","2025-07","2025-08","2025-09","2025-10","2025-11","2025-12","2026-01","2026-02","2026-03","2026-04","2026-05","2026-06"],"totalFollowers":4487};
   const paybackPosts = [
     {caption:'„Ich habe so viele PAYBACK Punkte, der nächste Wasserkocher geht auf meinen Nacken."',label:'Wasserkocher · Dez 2025',impr:88810,likes:0,comments:32,shares:0,eng:381,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_ich-habe-so-viele-payback-punkte-der-n%C3%A4chste-share-7404056454661320706-AcMt',type:'humor'},
@@ -8110,13 +8113,13 @@ function saveMix() {
 }
 
 // ══════════════════════════════════════════
-//  TEAM-CLOUD (Supabase): gemeinsame Daten + Login für Mitarbeiter
+//  TEAM-CLOUD (Microsoft 365 / SharePoint oder Supabase): gemeinsame Daten + Login für Mitarbeiter
 //  Inaktiv, solange CLOUD_CFG leer ist. Lokal-first: die App arbeitet immer auf den lokalen Daten,
 //  die Cloud gleicht im Hintergrund ab (Kunden/Programme = je eine Zeile, Rest = eine "meta"-Zeile).
 //  Schutz vor Datenverlust: Änderungen werden nur mit passender Revision geschrieben (Compare-and-Swap),
 //  bei gleichzeitiger Bearbeitung entsteht eine Konflikt-Kopie statt Überschreiben, Löschen ist "weich".
 // ══════════════════════════════════════════
-const CLOUD = { enabled: !!(CLOUD_CFG.url && CLOUD_CFG.anonKey), status: 'off', running: false, again: false, timer: null, retry: null, lastSync: 0 };
+const CLOUD = { enabled: _cloudCfgOn() && location.protocol !== 'file:', kind: (CLOUD_CFG.ms && CLOUD_CFG.ms.clientId) ? 'ms' : 'sb', status: 'off', running: false, again: false, timer: null, retry: null, lastSync: 0 };
 const _CLOUD_SESSION_KEY = '_cloud_session', _CLOUD_STATE_KEY = '_cloud_state';
 const _META_FIELDS = ['compares','compareNotes','compareColors','viewNotes','groupShareBlobIds','deletedClientIds','deletedProgramIds'];
 
@@ -8190,6 +8193,184 @@ async function _cRest(method, path, body, prefer) {
   return { ok: res.ok, status: res.status, json };
 }
 
+// ── Microsoft 365: Anmeldung (MSAL) + Dateizugriff (Graph) ──
+const _MS_SCOPES = ['Sites.ReadWrite.All'];
+let _msal = null, _msalReady = null, _msIdx = {};
+function _msRedirectUri() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
+function _msLoadLib() {
+  if (window.msal) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js';
+    s.integrity = 'sha384-B5PXeUfgiegchZiX5iMRssMrHd9NfPhFnITob1HyW1CY76udptWpBsniaDsH/+BY'; s.crossOrigin = 'anonymous';
+    s.onload = res; s.onerror = () => rej(new Error('Microsoft-Anmeldung konnte nicht geladen werden (Internet?)'));
+    document.head.appendChild(s);
+  });
+}
+function _msInit() {
+  if (_msalReady) return _msalReady;
+  _msalReady = (async () => {
+    await _msLoadLib();
+    const c = CLOUD_CFG.ms;
+    const app = new msal.PublicClientApplication({
+      auth: { clientId: c.clientId, authority: 'https://login.microsoftonline.com/' + c.tenantId, redirectUri: _msRedirectUri(), navigateToLoginRequestUrl: false },
+      cache: { cacheLocation: 'localStorage' }
+    });
+    await app.initialize();
+    const r = await app.handleRedirectPromise();              // Rückkehr von der Microsoft-Anmeldeseite
+    const acc = (r && r.account) || app.getActiveAccount() || app.getAllAccounts()[0];
+    if (acc) app.setActiveAccount(acc);
+    _msal = app;
+    return app;
+  })();
+  _msalReady.catch(() => { _msalReady = null; });
+  return _msalReady;
+}
+function _msAuthMsg(e) {
+  const m = String((e && (e.errorMessage || e.message)) || e || '');
+  if (/AADSTS50011/.test(m)) return 'Die Adresse ' + _msRedirectUri() + ' ist in Azure nicht als Weiterleitungs-URI (Typ „Single-Page-Anwendung") eingetragen.';
+  if (/AADSTS65001|consent_required/i.test(m)) return 'Die Administrator-Zustimmung für die App fehlt (Azure → API-Berechtigungen → „Administratorzustimmung erteilen").';
+  if (/AADSTS700016|AADSTS900023/.test(m)) return 'Client-ID oder Mandanten-ID stimmen nicht — bitte bei der Administratorin prüfen.';
+  if (/AADSTS50020|AADSTS50105|AADSTS700025/.test(m)) return 'Dieses Konto hat keinen Zugriff auf die App.';
+  if (/user_cancelled/i.test(m)) return 'Anmeldung abgebrochen.';
+  return m || 'Anmeldung fehlgeschlagen';
+}
+async function _msToken(force) {
+  const app = await _msInit();
+  const acc = app.getActiveAccount() || app.getAllAccounts()[0];
+  if (!acc) { _cloudSetSession(null); throw new Error('NO_SESSION'); }
+  try {
+    const r = await app.acquireTokenSilent({ scopes: _MS_SCOPES, account: acc, forceRefresh: !!force });
+    return r.accessToken;
+  } catch (e) {
+    if (e && (e.name === 'InteractionRequiredAuthError' || /interaction_required|login_required|consent_required|invalid_grant|no_tokens_found/i.test(e.errorCode || e.message || ''))) { _cloudSetSession(null); throw new Error('NO_SESSION'); }
+    throw new Error('Offline');
+  }
+}
+async function _msGraph(method, path, opts) {
+  opts = opts || {};
+  const url = /^https?:/.test(path) ? path : 'https://graph.microsoft.com/v1.0' + path;
+  let forced = false;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const headers = Object.assign({ Authorization: 'Bearer ' + await _msToken(forced) }, opts.headers || {});
+    forced = false;
+    let res;
+    try { res = await fetch(url, { method, headers, body: opts.body }); } catch (e) { throw new Error('Offline'); }
+    if (res.status === 401 && attempt === 0) { forced = true; continue; }
+    if ((res.status === 429 || res.status === 503) && attempt < 3) {
+      const ra = parseInt(res.headers.get('Retry-After') || '2', 10) || 2;
+      await new Promise(r => setTimeout(r, Math.min(Math.max(ra, 1), 20) * 1000)); continue;
+    }
+    return res;
+  }
+  throw new Error('Microsoft Graph nicht erreichbar');
+}
+function _msErr(status, what) {
+  if (status === 401 || status === 403) return what + ': kein Zugriff auf den SharePoint-Ordner — bitte bei der Administratorin Berechtigung anfragen (' + status + ')';
+  if (status === 404) return what + ': SharePoint-Seite oder Ordner nicht gefunden (404)';
+  return what + ' fehlgeschlagen (' + status + ')';
+}
+const _msEncId = id => String(id).replace(/[^A-Za-z0-9_\-]/g, ch => '~' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
+const _msDecId = s => s.replace(/~([0-9a-f]{4})/g, (m, h) => String.fromCharCode(parseInt(h, 16)));
+const _msName = (kind, id) => kind + '__' + _msEncId(id) + '.json';
+function _msFolder() { return ((CLOUD_CFG.ms.folder || 'LinkedInStudio') + '').split('/').filter(Boolean).map(encodeURIComponent).join('/'); }
+async function _msDrive() {
+  const key = '_ms_drive_' + CLOUD_CFG.ms.siteUrl;
+  try { const d = JSON.parse(localStorage.getItem(key) || 'null'); if (d && d.id) return d.id; } catch(e) {}
+  const u = new URL(CLOUD_CFG.ms.siteUrl), sp = u.pathname.replace(/\/+$/, '');
+  const r1 = await _msGraph('GET', '/sites/' + u.hostname + (sp ? ':' + sp : '') + '?$select=id');
+  if (!r1.ok) throw new Error(_msErr(r1.status, 'SharePoint-Seite'));
+  const site = await r1.json();
+  const r2 = await _msGraph('GET', '/sites/' + site.id + '/drive?$select=id');
+  if (!r2.ok) throw new Error(_msErr(r2.status, 'Dokumentbibliothek'));
+  const id = (await r2.json()).id;
+  try { localStorage.setItem(key, JSON.stringify({ id })); } catch(e) {}
+  return id;
+}
+const _storeMS = {
+  async index() {
+    const d = await _msDrive(), out = [];
+    let url = '/drives/' + d + '/root:/' + _msFolder() + ':/children?$select=name,eTag&$top=200';
+    _msIdx = {};
+    while (url) {
+      const r = await _msGraph('GET', url);
+      if (r.status === 404) return [];                     // Ordner existiert noch nicht → leer
+      if (!r.ok) throw new Error(_msErr(r.status, 'Lesen'));
+      const j = await r.json();
+      (j.value || []).forEach(f => {
+        const m = /^(client|program|meta)__(.+)\.json$/.exec(f.name || '');
+        if (m) { const id = _msDecId(m[2]); out.push({ kind: m[1], id, rev: f.eTag }); _msIdx[m[1] + ':' + id] = f.eTag; }
+      });
+      url = j['@odata.nextLink'] || null;
+    }
+    return out;
+  },
+  async fetch(kind, ids) {
+    const d = await _msDrive(), rows = [];
+    const one = async id => {
+      const path = '/drives/' + d + '/root:/' + _msFolder() + '/' + _msName(kind, id) + ':';
+      let r;
+      try { r = await _msGraph('GET', path + '/content'); }
+      catch (e) {                                          // Weiterleitung blockiert → über die Download-Adresse versuchen
+        if (e.message !== 'Offline') throw e;
+        const m = await _msGraph('GET', path + '?$select=id,@microsoft.graph.downloadUrl');
+        const url = m.ok && (await m.json())['@microsoft.graph.downloadUrl'];
+        if (!url) throw e;
+        r = await fetch(url);
+      }
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error(_msErr(r.status, 'Lesen'));
+      let j = null; try { j = JSON.parse(await r.text()); } catch(e) {}
+      if (!j) return null;
+      return { kind, id, data: j.data || {}, deleted: !!j.deleted, rev: _msIdx[kind + ':' + id], updated_by: j.by || '' };
+    };
+    for (let i = 0; i < ids.length; i += 4) rows.push(...(await Promise.all(ids.slice(i, i + 4).map(one))).filter(Boolean));
+    return rows;
+  },
+  async put(kind, id, payload, rev) {
+    const d = await _msDrive(), s = _cloudSession();
+    const body = JSON.stringify({ kind, id, deleted: !!payload.deleted, data: payload.data, by: (s && s.email) || '', at: new Date().toISOString() });
+    const headers = { 'Content-Type': 'application/json' };
+    let q = '';
+    if (rev) headers['If-Match'] = rev; else q = '?@microsoft.graph.conflictBehavior=fail';   // neu anlegen, aber nie fremde Datei überschreiben
+    const r = await _msGraph('PUT', '/drives/' + d + '/root:/' + _msFolder() + '/' + _msName(kind, id) + ':/content' + q, { headers, body });
+    if (r.status === 412 || r.status === 409 || (rev && r.status === 404)) return { conflict: true };   // jemand war schneller → erst abgleichen
+    if (!r.ok) throw new Error(_msErr(r.status, 'Speichern'));
+    return { rev: (await r.json()).eTag };
+  }
+};
+const _storeSB = {
+  async index() {
+    const res = await _cRest('GET', '/app_docs?select=kind,id,rev,deleted');
+    if (!res.ok) throw new Error('Lesen fehlgeschlagen (' + res.status + ')');
+    return res.json || [];
+  },
+  async fetch(kind, ids) {
+    const rows = [];
+    for (let i = 0; i < ids.length; i += 20) {     // in Paketen laden (Download-Größe, URL-Länge)
+      const part = ids.slice(i, i + 20).map(x => '"' + String(x).replace(/"/g, '') + '"').join(',');
+      const res = await _cRest('GET', '/app_docs?select=kind,id,data,rev,deleted,updated_by&kind=eq.' + kind + '&id=in.(' + encodeURIComponent(part) + ')');
+      if (!res.ok) throw new Error('Lesen fehlgeschlagen (' + res.status + ')');
+      rows.push(...(res.json || []));
+    }
+    return rows;
+  },
+  async put(kind, id, payload, rev) {
+    let res;
+    if (rev) {
+      res = await _cRest('PATCH', '/app_docs?kind=eq.' + kind + '&id=eq.' + encodeURIComponent(id) + '&rev=eq.' + rev, payload, 'return=representation');
+      if (res.ok && Array.isArray(res.json) && res.json.length === 0) return { conflict: true };   // Revision veraltet
+    } else {
+      res = await _cRest('POST', '/app_docs', { kind, id, ...payload }, 'return=representation');
+      if (res.status === 409) return { conflict: true };                                          // gibt es schon → erst abgleichen
+    }
+    if (!res.ok) throw new Error('Speichern fehlgeschlagen (' + res.status + ')');
+    const row = Array.isArray(res.json) ? res.json[0] : res.json;
+    return { rev: row && row.rev };
+  }
+};
+function _cloudStore() { return CLOUD.kind === 'ms' ? _storeMS : _storeSB; }
+
 // ── Lokale Daten als Sync-Einheiten ────────
 function _cloudEntities() {
   const list = [];
@@ -8239,22 +8420,15 @@ function _persistQuiet() {   // wie saveApp, aber ohne Re-Render und ohne neuen 
 // ── Cloud → lokal ──────────────────────────
 async function _cloudPull() {
   const st = _cloudState();
-  const idxRes = await _cRest('GET', '/app_docs?select=kind,id,rev,deleted');
-  if (!idxRes.ok) throw new Error('Lesen fehlgeschlagen (' + idxRes.status + ')');
-  const index = idxRes.json || [];
+  const index = await _cloudStore().index();
   const remoteKeys = new Set(index.map(r => r.kind + ':' + r.id));
-  Object.keys(st.base).forEach(k => { if (!remoteKeys.has(k)) delete st.base[k]; });   // Zeile in der Cloud komplett entfernt → neu hochladen
+  Object.keys(st.base).forEach(k => { if (!remoteKeys.has(k)) delete st.base[k]; });   // Eintrag in der Cloud komplett entfernt → neu hochladen
 
   const changed = index.filter(r => { const b = st.base[r.kind + ':' + r.id]; return !b || b.rev !== r.rev; });
   const rows = [];
   for (const kind of ['client', 'program', 'meta']) {
     const ids = changed.filter(r => r.kind === kind).map(r => r.id);
-    for (let i = 0; i < ids.length; i += 20) {     // in Paketen laden (Download-Größe, URL-Länge)
-      const part = ids.slice(i, i + 20).map(x => '"' + String(x).replace(/"/g, '') + '"').join(',');
-      const res = await _cRest('GET', '/app_docs?select=kind,id,data,rev,deleted,updated_by&kind=eq.' + kind + '&id=in.(' + encodeURIComponent(part) + ')');
-      if (!res.ok) throw new Error('Lesen fehlgeschlagen (' + res.status + ')');
-      rows.push(...(res.json || []));
-    }
+    if (ids.length) rows.push(...(await _cloudStore().fetch(kind, ids)));
   }
   if (!rows.length) { _cloudSaveState(st); return false; }
 
@@ -8320,17 +8494,9 @@ async function _cloudPush() {
   let conflict = false;
   const write = async (kind, id, payload, h) => {
     const k = kind + ':' + id, b = st.base[k];
-    let res;
-    if (b && b.rev) {
-      res = await _cRest('PATCH', '/app_docs?kind=eq.' + kind + '&id=eq.' + encodeURIComponent(id) + '&rev=eq.' + b.rev, payload, 'return=representation');
-      if (res.ok && Array.isArray(res.json) && res.json.length === 0) { conflict = true; return; }   // Revision veraltet
-    } else {
-      res = await _cRest('POST', '/app_docs', { kind, id, ...payload }, 'return=representation');
-      if (res.status === 409) { conflict = true; return; }                                          // gibt es schon → erst abgleichen
-    }
-    if (!res.ok) throw new Error('Speichern fehlgeschlagen (' + res.status + ')');
-    const row = Array.isArray(res.json) ? res.json[0] : res.json;
-    st.base[k] = { hash: h, rev: row && row.rev, deleted: !!payload.deleted };
+    const res = await _cloudStore().put(kind, id, payload, b && b.rev);
+    if (res.conflict) { conflict = true; return; }
+    st.base[k] = { hash: h, rev: res.rev, deleted: !!payload.deleted };
   };
   for (const e of _cloudEntities()) {
     const k = e.kind + ':' + e.id, b = st.base[k], h = _docHash(e.obj);
@@ -8379,14 +8545,16 @@ function _cloudStatus(state, msg) {
   const el = document.getElementById('cloudStatus'), s = _cloudSession();
   if (!el) return;
   if (!CLOUD.enabled || !s) { el.style.display = 'none'; return; }
-  const label = state === 'sync' ? '⟳ synchronisiere…' : state === 'error' ? '⚠️ Sync-Fehler — wird wiederholt' : '☁️ Team-Cloud verbunden';
+  const label = state === 'sync' ? '⟳ synchronisiere…' : state === 'error' ? '⚠️ Sync-Fehler — wird wiederholt' : (CLOUD.kind === 'ms' ? '☁️ Microsoft 365 verbunden' : '☁️ Team-Cloud verbunden');
   el.style.display = 'block';
   el.innerHTML = `<div onclick="cloudSync()" style="cursor:pointer" title="${esc(msg || 'Jetzt synchronisieren')}">${label}</div>
     <div style="opacity:.75;display:flex;justify-content:space-between;gap:8px;margin-top:2px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.email || '')}</span><a onclick="cloudLogout()" style="cursor:pointer;text-decoration:underline;white-space:nowrap">Abmelden</a></div>`;
 }
 async function cloudLogout() {
   try { if (!CLOUD.running) { clearTimeout(CLOUD.timer); await cloudSync(); } } catch(e) {}   // letzte Änderungen noch hochladen
-  _cloudSetSession(null); location.reload();
+  _cloudSetSession(null);
+  if (CLOUD.kind === 'ms') { try { Object.keys(localStorage).filter(k => /msal/i.test(k)).forEach(k => localStorage.removeItem(k)); } catch(e) {} }
+  location.reload();
 }
 function cloudShowLogin(msg) {
   document.getElementById('cloudLogin')?.remove();
@@ -8397,18 +8565,25 @@ function cloudShowLogin(msg) {
     <div style="font-size:30px;margin-bottom:6px">📊</div>
     <div style="font-size:20px;font-weight:800;color:#1A1F36">LinkedIn Studio</div>
     <div style="font-size:13px;color:#6E7A9F;margin:4px 0 18px">Team-Anmeldung · Branding People</div>
-    <input id="cloudEmail" type="email" autocomplete="username" placeholder="E-Mail" required style="width:100%;box-sizing:border-box;padding:11px 13px;border:1.5px solid #D9DCF0;border-radius:10px;font-size:14px;margin-bottom:10px;font-family:inherit">
-    <input id="cloudPw" type="password" autocomplete="current-password" placeholder="Passwort" required style="width:100%;box-sizing:border-box;padding:11px 13px;border:1.5px solid #D9DCF0;border-radius:10px;font-size:14px;font-family:inherit">
-    <div id="cloudLoginErr" style="min-height:18px;font-size:12px;color:#E03B3B;margin:10px 0 4px">${esc(msg || '')}</div>
-    <button id="cloudLoginBtn" type="submit" style="width:100%;padding:12px;background:#5B63FE;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Anmelden</button>
-    <div style="font-size:11px;color:#9AA0B4;margin-top:14px;line-height:1.5">Zugangsdaten bekommst du von deiner Administratorin. Ohne Anmeldung sind keine Kundendaten sichtbar.</div>
+    ${CLOUD.kind === 'ms' ? '' : `<input id="cloudEmail" type="email" autocomplete="username" placeholder="E-Mail" required style="width:100%;box-sizing:border-box;padding:11px 13px;border:1.5px solid #D9DCF0;border-radius:10px;font-size:14px;margin-bottom:10px;font-family:inherit">
+    <input id="cloudPw" type="password" autocomplete="current-password" placeholder="Passwort" required style="width:100%;box-sizing:border-box;padding:11px 13px;border:1.5px solid #D9DCF0;border-radius:10px;font-size:14px;font-family:inherit">`}
+    <div id="cloudLoginErr" style="min-height:18px;font-size:12px;color:#E03B3B;margin:10px 0 4px;line-height:1.45">${esc(msg || '')}</div>
+    <button id="cloudLoginBtn" type="submit" style="width:100%;padding:12px;background:#5B63FE;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">${CLOUD.kind === 'ms' ? 'Mit Microsoft anmelden' : 'Anmelden'}</button>
+    <div style="font-size:11px;color:#9AA0B4;margin-top:14px;line-height:1.5">${CLOUD.kind === 'ms' ? 'Anmeldung mit deinem Firmenkonto (Microsoft 365). Ohne Anmeldung sind keine Kundendaten sichtbar.' : 'Zugangsdaten bekommst du von deiner Administratorin. Ohne Anmeldung sind keine Kundendaten sichtbar.'}</div>
   </form>`;
   document.body.appendChild(d);
-  setTimeout(() => document.getElementById('cloudEmail')?.focus(), 50);
+  setTimeout(() => document.getElementById('cloudEmail')?.focus(), 50);   // nur Supabase-Maske
 }
 async function cloudDoLogin() {
   const btn = document.getElementById('cloudLoginBtn'), err = document.getElementById('cloudLoginErr');
   btn.disabled = true; btn.textContent = 'Anmelden…'; err.textContent = '';
+  if (CLOUD.kind === 'ms') {
+    try {
+      const app = await _msInit();
+      await app.loginRedirect({ scopes: _MS_SCOPES, redirectUri: _msRedirectUri() });   // wechselt zur Microsoft-Seite und kommt zurück
+    } catch (e) { err.textContent = _msAuthMsg(e); btn.disabled = false; btn.textContent = 'Mit Microsoft anmelden'; }
+    return;
+  }
   try {
     await cloudLogin(document.getElementById('cloudEmail').value, document.getElementById('cloudPw').value);
     document.getElementById('cloudLogin')?.remove();
@@ -8426,8 +8601,23 @@ function _cloudStartLoops() {
   setInterval(() => { if (!document.hidden) cloudSync(); }, 60000);
   window.addEventListener('online', () => cloudSync());
 }
+async function _msBoot() {
+  const had = !!_cloudSession();
+  if (had) { renderApp(); _cloudStatus('sync'); _cloudStartLoops(); }
+  try {
+    const app = await _msInit();                          // verarbeitet auch die Rückkehr von der Microsoft-Anmeldung
+    const acc = app.getActiveAccount() || app.getAllAccounts()[0];
+    if (!acc) { _cloudSetSession(null); cloudShowLogin(); return; }
+    _cloudSetSession({ email: acc.username || acc.name || '' });
+    if (!had) { document.getElementById('cloudLogin')?.remove(); renderApp(); _cloudStartLoops(); }
+    _cloudStatus('sync'); cloudSync();
+  } catch (e) {
+    if (!had) cloudShowLogin(_msAuthMsg(e)); else _cloudStatus('error', e.message);
+  }
+}
 function cloudBoot() {
   if (!CLOUD.enabled) { renderApp(); return; }
+  if (CLOUD.kind === 'ms') { _msBoot(); return; }
   if (_cloudSession()) { renderApp(); _cloudStatus('sync'); _cloudStartLoops(); cloudSync(); }
   else cloudShowLogin();
 }

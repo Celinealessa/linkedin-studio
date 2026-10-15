@@ -1,4 +1,6 @@
-# Team-Zugang einrichten (einmalig, ca. 15 Minuten)
+# Team-Zugang einrichten – Variante Supabase (einmalig, ca. 15 Minuten)
+
+> Empfohlen, wenn ihr Microsoft 365 nutzt: **[TEAM_ZUGANG_MICROSOFT.md](TEAM_ZUGANG_MICROSOFT.md)** – Daten bleiben in eurem SharePoint, Anmeldung mit dem Firmenkonto.
 
 Ohne diese Einrichtung läuft LinkedIn Studio wie bisher rein lokal im Browser.
 Mit der Einrichtung melden sich Mitarbeiter mit E-Mail + Passwort an und arbeiten alle auf **denselben Kundendaten**.
