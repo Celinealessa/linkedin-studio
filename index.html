@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20261009-01 -->
+<!-- v20261015-01 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -11,7 +11,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20261009-01';
+  const MY_V = 'v20261015-01';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -685,7 +685,8 @@ body {
       <span>💾</span> Alles speichern
     </button>
 
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20261009-01</span></div>
+    <div id="cloudStatus" style="display:none;padding:8px 16px;font-size:11px;color:rgba(255,255,255,.6);border-top:1px solid rgba(255,255,255,.08)"></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20261015-01</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -740,6 +741,10 @@ body {
 // ══════════════════════════════════════════
 const STORAGE_KEY = 'linkedin_studio_v2';
 
+// ── Team-Cloud (Supabase). Solange url/anonKey leer sind, läuft die App unverändert rein lokal.
+// Eintragen nach der Einrichtung (siehe TEAM_ZUGANG.md). anonKey ist per Design öffentlich — NIEMALS den service_role-Key hier eintragen!
+const CLOUD_CFG = { url: '', anonKey: '' };
+
 function loadApp() {
   // 1. Eingebettete Daten im HTML (Desktop-Datei, immer aktuell)
   try {
@@ -786,6 +791,7 @@ function saveApp() {
   }
   // Auto-sync Gist im Hintergrund (debounced, kein Token = kein Aufruf)
   _scheduleGistSync();
+  if (typeof _scheduleCloudSync === 'function') _scheduleCloudSync();
 }
 
 let _gistSyncTimer = null;
@@ -847,6 +853,7 @@ if (!APP.compares) APP.compares = [];
 (function ensurePaybackClient() {
   // Wenn der User diesen Client explizit gelöscht hat, nicht neu erstellen
   if ((APP.deletedClientIds || []).includes('payback2025')) return;
+  if (CLOUD_CFG.url) return; // Cloud-Modus: Daten kommen aus der gemeinsamen Datenbank
   const paybackMonthly = {"labels":["Jun 25","Jul 25","Aug 25","Sep 25","Okt 25","Nov 25","Dez 25","Jan 26","Feb 26","Mrz 26","Apr 26","Mai 26","Jun 26"],"impressions":[17874,9363,4208,63803,67830,42019,154526,54329,58040,38940,49931,93292,4833],"engagements":[542,303,204,1704,1542,858,1660,1087,1120,1113,1417,969,120],"followers":[79,45,64,456,234,171,378,203,184,229,543,287,12],"postsPerMonth":[0,0,0,0,0,0,0,0,0,0,0,0,0],"_sortKeys":["2025-06","2025-07","2025-08","2025-09","2025-10","2025-11","2025-12","2026-01","2026-02","2026-03","2026-04","2026-05","2026-06"],"totalFollowers":4487};
   const paybackPosts = [
     {caption:'„Ich habe so viele PAYBACK Punkte, der nächste Wasserkocher geht auf meinen Nacken."',label:'Wasserkocher · Dez 2025',impr:88810,likes:0,comments:32,shares:0,eng:381,url:'https://www.linkedin.com/posts/dominik-dommick-4186384_ich-habe-so-viele-payback-punkte-der-n%C3%A4chste-share-7404056454661320706-AcMt',type:'humor'},
@@ -6074,6 +6081,8 @@ function createNewProgram() {
 function askDeleteProgram(id) {
   if (!confirm('CI-Programm wirklich löschen?')) return;
   APP.programs = (APP.programs||[]).filter(p=>p.id!==id);
+  if (!APP.deletedProgramIds) APP.deletedProgramIds = [];
+  if (!APP.deletedProgramIds.includes(id)) APP.deletedProgramIds.push(id);
   saveApp();
   navigate('home');
   showToast('CI-Programm gelöscht');
@@ -8101,10 +8110,333 @@ function saveMix() {
 }
 
 // ══════════════════════════════════════════
+//  TEAM-CLOUD (Supabase): gemeinsame Daten + Login für Mitarbeiter
+//  Inaktiv, solange CLOUD_CFG leer ist. Lokal-first: die App arbeitet immer auf den lokalen Daten,
+//  die Cloud gleicht im Hintergrund ab (Kunden/Programme = je eine Zeile, Rest = eine "meta"-Zeile).
+//  Schutz vor Datenverlust: Änderungen werden nur mit passender Revision geschrieben (Compare-and-Swap),
+//  bei gleichzeitiger Bearbeitung entsteht eine Konflikt-Kopie statt Überschreiben, Löschen ist "weich".
+// ══════════════════════════════════════════
+const CLOUD = { enabled: !!(CLOUD_CFG.url && CLOUD_CFG.anonKey), status: 'off', running: false, again: false, timer: null, retry: null, lastSync: 0 };
+const _CLOUD_SESSION_KEY = '_cloud_session', _CLOUD_STATE_KEY = '_cloud_state';
+const _META_FIELDS = ['compares','compareNotes','compareColors','viewNotes','groupShareBlobIds','deletedClientIds','deletedProgramIds'];
+
+function _cloudSession() { try { return JSON.parse(localStorage.getItem(_CLOUD_SESSION_KEY) || 'null'); } catch(e) { return null; } }
+function _cloudSetSession(s) { try { if (s) localStorage.setItem(_CLOUD_SESSION_KEY, JSON.stringify(s)); else localStorage.removeItem(_CLOUD_SESSION_KEY); } catch(e) {} }
+function _cloudState() { try { const s = JSON.parse(localStorage.getItem(_CLOUD_STATE_KEY) || 'null'); if (s && s.base) return s; } catch(e) {} return { base: {}, backedUp: false }; }
+function _cloudSaveState(s) { try { localStorage.setItem(_CLOUD_STATE_KEY, JSON.stringify(s)); } catch(e) {} }
+
+// Stabile Serialisierung (sortierte Schlüssel) — jsonb gibt Schlüssel in anderer Reihenfolge zurück
+function _canon(v) {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v === undefined ? null : v);
+  if (Array.isArray(v)) return '[' + v.map(x => (x === undefined || typeof x === 'function') ? 'null' : _canon(x)).join(',') + ']';
+  return '{' + Object.keys(v).filter(k => v[k] !== undefined && typeof v[k] !== 'function').sort().map(k => JSON.stringify(k) + ':' + _canon(v[k])).join(',') + '}';
+}
+function _docHash(obj) {
+  const str = _canon(obj);
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36) + ':' + str.length;
+}
+
+// ── Auth ───────────────────────────────────
+async function cloudLogin(email, password) {
+  const res = await fetch(CLOUD_CFG.url + '/auth/v1/token?grant_type=password', {
+    method: 'POST', headers: { apikey: CLOUD_CFG.anonKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email.trim(), password })
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error_description || j.msg || j.message || 'Anmeldung fehlgeschlagen');
+  _cloudSetSession({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + (j.expires_in || 3600) * 1000, email: (j.user && j.user.email) || email.trim() });
+}
+let _cloudRefreshing = null;
+function _cloudRefresh() {
+  if (_cloudRefreshing) return _cloudRefreshing;
+  _cloudRefreshing = (async () => {
+    const cur = _cloudSession();
+    if (!cur || !cur.refresh_token) throw new Error('NO_SESSION');
+    let res;
+    try {
+      res = await fetch(CLOUD_CFG.url + '/auth/v1/token?grant_type=refresh_token', {
+        method: 'POST', headers: { apikey: CLOUD_CFG.anonKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: cur.refresh_token })
+      });
+    } catch (e) { throw new Error('Offline'); }               // Netzwerkproblem ≠ abgemeldet
+    const j = await res.json().catch(() => ({}));
+    if (res.status === 400 || res.status === 401 || res.status === 403) { _cloudSetSession(null); throw new Error('NO_SESSION'); }
+    if (!res.ok) throw new Error('Auth-Fehler ' + res.status);
+    _cloudSetSession({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + (j.expires_in || 3600) * 1000, email: cur.email });
+  })().finally(() => { _cloudRefreshing = null; });
+  return _cloudRefreshing;
+}
+async function _cloudToken() {
+  let s = _cloudSession();
+  if (!s) throw new Error('NO_SESSION');
+  if (s.expires_at - Date.now() < 60000) { await _cloudRefresh(); s = _cloudSession(); }
+  return s.access_token;
+}
+async function _cRest(method, path, body, prefer) {
+  const call = async () => {
+    const headers = { apikey: CLOUD_CFG.anonKey, Authorization: 'Bearer ' + await _cloudToken() };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (prefer) headers.Prefer = prefer;
+    return fetch(CLOUD_CFG.url + '/rest/v1' + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+  };
+  let res = await call();
+  if (res.status === 401) { await _cloudRefresh(); res = await call(); }
+  const text = await res.text();
+  let json = null; try { json = text ? JSON.parse(text) : null; } catch(e) {}
+  return { ok: res.ok, status: res.status, json };
+}
+
+// ── Lokale Daten als Sync-Einheiten ────────
+function _cloudEntities() {
+  const list = [];
+  (APP.clients || []).forEach(c => { if (c && c.id) list.push({ kind: 'client', id: c.id, obj: c }); });
+  (APP.programs || []).forEach(p => { if (p && p.id) list.push({ kind: 'program', id: p.id, obj: p }); });
+  const meta = {}; _META_FIELDS.forEach(f => { if (APP[f] !== undefined) meta[f] = APP[f]; });
+  list.push({ kind: 'meta', id: 'main', obj: meta });
+  return list;
+}
+function _findLocal(kind, id) { return _cloudEntities().find(e => e.kind === kind && e.id === id) || null; }
+function _applyRemote(kind, id, data) {
+  if (kind === 'client')       { data.id = id; const i = (APP.clients  = APP.clients  || []).findIndex(c => c.id === id); if (i >= 0) APP.clients[i]  = data; else APP.clients.push(data); }
+  else if (kind === 'program') { data.id = id; const i = (APP.programs = APP.programs || []).findIndex(p => p.id === id); if (i >= 0) APP.programs[i] = data; else APP.programs.push(data); }
+  else if (kind === 'meta')    { _META_FIELDS.forEach(f => { if (data[f] !== undefined) APP[f] = data[f]; }); }
+}
+function _removeLocal(kind, id) {
+  if (kind === 'client')  APP.clients  = (APP.clients  || []).filter(c => c.id !== id);
+  if (kind === 'program') APP.programs = (APP.programs || []).filter(p => p.id !== id);
+}
+function _mergeMeta(local, remote) {
+  const out = {};
+  new Set([...Object.keys(remote), ...Object.keys(local)]).forEach(f => {
+    const a = local[f], b = remote[f];
+    if (a === undefined) out[f] = b;
+    else if (b === undefined) out[f] = a;
+    else if (Array.isArray(a) && Array.isArray(b)) {
+      if (f === 'compares') { const seen = new Set(b.map(x => x && x.id)); out[f] = [...b, ...a.filter(x => !(x && seen.has(x.id)))]; }
+      else out[f] = [...new Set([...b, ...a])];
+    } else if (a && b && typeof a === 'object' && typeof b === 'object') out[f] = { ...b, ...a };
+    else out[f] = a;
+  });
+  return out;
+}
+function _conflictCopy(kind, obj) {
+  const copy = JSON.parse(JSON.stringify(obj));
+  copy.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const stamp = ' (Konflikt-Kopie ' + new Date().toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) + ')';
+  if (copy.ci) { copy.ci.client = (copy.ci.client || 'Kunde') + stamp; delete copy.ci.shareBlobId; }
+  if (kind === 'program') copy.name = (copy.name || 'Programm') + stamp;
+  return copy;
+}
+function _persistQuiet() {   // wie saveApp, aber ohne Re-Render und ohne neuen Sync
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(APP)); } catch(e) {}
+  try { const t = document.getElementById('__appdata'); if (t) t.textContent = JSON.stringify(APP); } catch(e) {}
+}
+
+// ── Cloud → lokal ──────────────────────────
+async function _cloudPull() {
+  const st = _cloudState();
+  const idxRes = await _cRest('GET', '/app_docs?select=kind,id,rev,deleted');
+  if (!idxRes.ok) throw new Error('Lesen fehlgeschlagen (' + idxRes.status + ')');
+  const index = idxRes.json || [];
+  const remoteKeys = new Set(index.map(r => r.kind + ':' + r.id));
+  Object.keys(st.base).forEach(k => { if (!remoteKeys.has(k)) delete st.base[k]; });   // Zeile in der Cloud komplett entfernt → neu hochladen
+
+  const changed = index.filter(r => { const b = st.base[r.kind + ':' + r.id]; return !b || b.rev !== r.rev; });
+  const rows = [];
+  for (const kind of ['client', 'program', 'meta']) {
+    const ids = changed.filter(r => r.kind === kind).map(r => r.id);
+    for (let i = 0; i < ids.length; i += 20) {     // in Paketen laden (Download-Größe, URL-Länge)
+      const part = ids.slice(i, i + 20).map(x => '"' + String(x).replace(/"/g, '') + '"').join(',');
+      const res = await _cRest('GET', '/app_docs?select=kind,id,data,rev,deleted,updated_by&kind=eq.' + kind + '&id=in.(' + encodeURIComponent(part) + ')');
+      if (!res.ok) throw new Error('Lesen fehlgeschlagen (' + res.status + ')');
+      rows.push(...(res.json || []));
+    }
+  }
+  if (!rows.length) { _cloudSaveState(st); return false; }
+
+  // Erst-Abgleich eines Geräts: lokale Daten, die durch Cloud-Daten ersetzt würden, vorher einmalig als Datei sichern
+  if (!st.backedUp) {
+    const wouldReplace = rows.some(r => {
+      if (r.kind === 'meta' || r.id === 'payback2025' || st.base[r.kind + ':' + r.id]) return false;
+      const loc = _findLocal(r.kind, r.id);
+      if (!loc) return false;
+      return r.deleted ? true : _docHash(loc.obj) !== _docHash(r.data);
+    });
+    if (wouldReplace && (APP.clients || []).length) { try { exportAppData(); showToast('💾 Lokale Daten wurden vor dem Abgleich als Backup-Datei gesichert', 'ok'); } catch(e) {} }
+    st.backedUp = true;
+  }
+
+  let touched = false;
+  const tombC = new Set(APP.deletedClientIds || []), tombP = new Set(APP.deletedProgramIds || []);
+  for (const r of rows) {
+    const k = r.kind + ':' + r.id, b = st.base[k], loc = _findLocal(r.kind, r.id);
+    const locHash = loc ? _docHash(loc.obj) : null;
+    const locallyDeleted = (r.kind === 'client' && tombC.has(r.id)) || (r.kind === 'program' && tombP.has(r.id));
+    // Gerade im Bearbeiten-Formular: dieses Objekt nicht unter den Händen austauschen (nächster Durchlauf)
+    if (r.kind === 'client' && typeof ROUTE !== 'undefined' && ROUTE.view === 'edit' && ROUTE.clientId === r.id) continue;
+
+    if (r.deleted) {
+      if (loc && r.kind !== 'meta') {
+        if (!b || locHash === b.hash) { _removeLocal(r.kind, r.id); touched = true; }
+        else { st.base[k] = { hash: '', rev: r.rev }; continue; }       // lokal geändert → bleibt, wird neu hochgeladen
+      }
+      st.base[k] = { hash: 'DELETED', rev: r.rev, deleted: true };
+      continue;
+    }
+    if (locallyDeleted) { st.base[k] = { hash: '', rev: r.rev }; continue; }   // wir haben es gelöscht → Push setzt die Löschung
+
+    const data = r.data || {}, remHash = _docHash(data);
+    if (loc && locHash === remHash) { st.base[k] = { hash: remHash, rev: r.rev }; continue; }
+    const localChanged = loc ? (!b || locHash !== b.hash) : false;
+    if (!loc) { _applyRemote(r.kind, r.id, data); touched = true; }
+    else if (!localChanged || r.id === 'payback2025' || (!b && r.kind !== 'meta')) { _applyRemote(r.kind, r.id, data); touched = true; }
+    else if (r.kind === 'meta') { _applyRemote('meta', 'main', _mergeMeta(loc.obj, data)); st.base[k] = { hash: '', rev: r.rev }; touched = true; continue; }
+    else {   // echter Konflikt: beide Seiten haben geändert → Cloud-Stand übernehmen, lokale Fassung als Kopie behalten
+      const copy = _conflictCopy(r.kind, loc.obj);
+      _applyRemote(r.kind, r.id, data);
+      _applyRemote(r.kind, copy.id, copy);
+      touched = true;
+      showToast('⚠️ Gleichzeitig bearbeitet — deine Fassung wurde als „Konflikt-Kopie" gesichert', 'warn');
+    }
+    st.base[k] = { hash: remHash, rev: r.rev };
+  }
+  _cloudSaveState(st);
+  if (touched) {
+    _persistQuiet();
+    if (typeof renderSidebar === 'function') renderSidebar();
+    if (typeof ROUTE !== 'undefined' && ROUTE.view !== 'edit' && ROUTE.view !== 'ciprogramedit' && typeof renderApp === 'function') renderApp();
+  }
+  return touched;
+}
+
+// ── lokal → Cloud ──────────────────────────
+// Rückgabe: true, wenn jemand dazwischen geschrieben hat (dann Pull wiederholen)
+async function _cloudPush() {
+  const st = _cloudState();
+  let conflict = false;
+  const write = async (kind, id, payload, h) => {
+    const k = kind + ':' + id, b = st.base[k];
+    let res;
+    if (b && b.rev) {
+      res = await _cRest('PATCH', '/app_docs?kind=eq.' + kind + '&id=eq.' + encodeURIComponent(id) + '&rev=eq.' + b.rev, payload, 'return=representation');
+      if (res.ok && Array.isArray(res.json) && res.json.length === 0) { conflict = true; return; }   // Revision veraltet
+    } else {
+      res = await _cRest('POST', '/app_docs', { kind, id, ...payload }, 'return=representation');
+      if (res.status === 409) { conflict = true; return; }                                          // gibt es schon → erst abgleichen
+    }
+    if (!res.ok) throw new Error('Speichern fehlgeschlagen (' + res.status + ')');
+    const row = Array.isArray(res.json) ? res.json[0] : res.json;
+    st.base[k] = { hash: h, rev: row && row.rev, deleted: !!payload.deleted };
+  };
+  for (const e of _cloudEntities()) {
+    const k = e.kind + ':' + e.id, b = st.base[k], h = _docHash(e.obj);
+    if (b && !b.deleted && b.hash === h) continue;
+    if (e.kind === 'meta' && !b && h === _docHash({})) continue;
+    await write(e.kind, e.id, { data: e.obj, deleted: false }, h);
+  }
+  for (const [kind, ids] of [['client', APP.deletedClientIds || []], ['program', APP.deletedProgramIds || []]]) {
+    for (const id of ids) {
+      const b = st.base[kind + ':' + id];
+      if (b && b.deleted) continue;
+      if (!b) continue;                      // nie synchronisiert → nichts zu löschen
+      await write(kind, id, { data: {}, deleted: true }, 'DELETED');
+    }
+  }
+  _cloudSaveState(st);
+  return conflict;
+}
+
+// ── Steuerung ──────────────────────────────
+async function cloudSync() {
+  if (!CLOUD.enabled || !_cloudSession()) return;
+  if (CLOUD.running) { CLOUD.again = true; return; }
+  CLOUD.running = true; _cloudStatus('sync');
+  try {
+    for (let round = 0; round < 3; round++) {
+      await _cloudPull();
+      if (!(await _cloudPush())) break;
+    }
+    CLOUD.lastSync = Date.now(); _cloudStatus('ok');
+  } catch (e) {
+    if (e.message === 'NO_SESSION') { _cloudStatus('off'); cloudShowLogin('Bitte neu anmelden.'); }
+    else { console.warn('[cloud]', e); _cloudStatus('error', e.message); clearTimeout(CLOUD.retry); CLOUD.retry = setTimeout(cloudSync, 20000); }
+  } finally {
+    CLOUD.running = false;
+    if (CLOUD.again) { CLOUD.again = false; _scheduleCloudSync(1500); }
+  }
+}
+function _scheduleCloudSync(delay) {
+  if (!CLOUD.enabled || !_cloudSession()) return;
+  clearTimeout(CLOUD.timer);
+  CLOUD.timer = setTimeout(cloudSync, delay || 2000);
+}
+function _cloudStatus(state, msg) {
+  CLOUD.status = state;
+  const el = document.getElementById('cloudStatus'), s = _cloudSession();
+  if (!el) return;
+  if (!CLOUD.enabled || !s) { el.style.display = 'none'; return; }
+  const label = state === 'sync' ? '⟳ synchronisiere…' : state === 'error' ? '⚠️ Sync-Fehler — wird wiederholt' : '☁️ Team-Cloud verbunden';
+  el.style.display = 'block';
+  el.innerHTML = `<div onclick="cloudSync()" style="cursor:pointer" title="${esc(msg || 'Jetzt synchronisieren')}">${label}</div>
+    <div style="opacity:.75;display:flex;justify-content:space-between;gap:8px;margin-top:2px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.email || '')}</span><a onclick="cloudLogout()" style="cursor:pointer;text-decoration:underline;white-space:nowrap">Abmelden</a></div>`;
+}
+async function cloudLogout() {
+  try { if (!CLOUD.running) { clearTimeout(CLOUD.timer); await cloudSync(); } } catch(e) {}   // letzte Änderungen noch hochladen
+  _cloudSetSession(null); location.reload();
+}
+function cloudShowLogin(msg) {
+  document.getElementById('cloudLogin')?.remove();
+  const d = document.createElement('div');
+  d.id = 'cloudLogin';
+  d.style.cssText = "position:fixed;inset:0;z-index:100000;background:#F0F1FA;display:flex;align-items:center;justify-content:center;font-family:'DM Sans',sans-serif";
+  d.innerHTML = `<form style="background:#fff;border-radius:18px;padding:34px 32px;width:min(380px,92vw);box-shadow:0 24px 70px rgba(30,40,90,.18)" onsubmit="event.preventDefault();cloudDoLogin()">
+    <div style="font-size:30px;margin-bottom:6px">📊</div>
+    <div style="font-size:20px;font-weight:800;color:#1A1F36">LinkedIn Studio</div>
+    <div style="font-size:13px;color:#6E7A9F;margin:4px 0 18px">Team-Anmeldung · Branding People</div>
+    <input id="cloudEmail" type="email" autocomplete="username" placeholder="E-Mail" required style="width:100%;box-sizing:border-box;padding:11px 13px;border:1.5px solid #D9DCF0;border-radius:10px;font-size:14px;margin-bottom:10px;font-family:inherit">
+    <input id="cloudPw" type="password" autocomplete="current-password" placeholder="Passwort" required style="width:100%;box-sizing:border-box;padding:11px 13px;border:1.5px solid #D9DCF0;border-radius:10px;font-size:14px;font-family:inherit">
+    <div id="cloudLoginErr" style="min-height:18px;font-size:12px;color:#E03B3B;margin:10px 0 4px">${esc(msg || '')}</div>
+    <button id="cloudLoginBtn" type="submit" style="width:100%;padding:12px;background:#5B63FE;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Anmelden</button>
+    <div style="font-size:11px;color:#9AA0B4;margin-top:14px;line-height:1.5">Zugangsdaten bekommst du von deiner Administratorin. Ohne Anmeldung sind keine Kundendaten sichtbar.</div>
+  </form>`;
+  document.body.appendChild(d);
+  setTimeout(() => document.getElementById('cloudEmail')?.focus(), 50);
+}
+async function cloudDoLogin() {
+  const btn = document.getElementById('cloudLoginBtn'), err = document.getElementById('cloudLoginErr');
+  btn.disabled = true; btn.textContent = 'Anmelden…'; err.textContent = '';
+  try {
+    await cloudLogin(document.getElementById('cloudEmail').value, document.getElementById('cloudPw').value);
+    document.getElementById('cloudLogin')?.remove();
+    _cloudStartLoops();
+    renderApp(); _cloudStatus('sync'); cloudSync();
+  } catch (e) {
+    err.textContent = /Invalid login/i.test(e.message) ? 'E-Mail oder Passwort falsch.' : e.message;
+    btn.disabled = false; btn.textContent = 'Anmelden';
+  }
+}
+let _cloudLoopsStarted = false;
+function _cloudStartLoops() {
+  if (_cloudLoopsStarted) return; _cloudLoopsStarted = true;
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - CLOUD.lastSync > 20000) cloudSync(); });
+  setInterval(() => { if (!document.hidden) cloudSync(); }, 60000);
+  window.addEventListener('online', () => cloudSync());
+}
+function cloudBoot() {
+  if (!CLOUD.enabled) { renderApp(); return; }
+  if (_cloudSession()) { renderApp(); _cloudStatus('sync'); _cloudStartLoops(); cloudSync(); }
+  else cloudShowLogin();
+}
+
+// ══════════════════════════════════════════
 //  BOOT
 // ══════════════════════════════════════════
 checkSyncImport();
-if (!checkShareParam()) { renderApp(); }
+if (!checkShareParam()) { cloudBoot(); }
 </script>
 <div class="overlay" id="recModal">
   <div class="modal" style="max-width:520px">
