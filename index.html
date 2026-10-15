@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v20261015-02 -->
+<!-- v20261015-03 -->
 <script id="__appdata" type="application/json">null</script>
 <html lang="de">
 <head>
@@ -11,7 +11,7 @@
 <script>
 // Auto cache-buster: check every time the tab is opened (not just once per session)
 (function(){
-  const MY_V = 'v20261015-02';
+  const MY_V = 'v20261015-03';
   const CACHE_KEY = '_lv_checked';
   const last = parseInt(localStorage.getItem(CACHE_KEY)||'0');
   const now = Date.now();
@@ -686,7 +686,7 @@ body {
     </button>
 
     <div id="cloudStatus" style="display:none;padding:8px 16px;font-size:11px;color:rgba(255,255,255,.6);border-top:1px solid rgba(255,255,255,.08)"></div>
-    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20261015-02</span></div>
+    <div class="sidebar-footer">LinkedIn Dashboard Studio <span id="appVerLabel" style="opacity:.5;font-size:10px">v20261015-03</span></div>
   </nav>
 
   <!-- MAIN -->
@@ -745,7 +745,7 @@ const STORAGE_KEY = 'linkedin_studio_v2';
 // Eintragen nach der Einrichtung (siehe TEAM_ZUGANG.md). anonKey ist per Design öffentlich — NIEMALS den service_role-Key hier eintragen!
 // Team-Cloud (leer = App läuft rein lokal). Entweder Supabase { url, anonKey } oder Microsoft 365:
 // ms: { clientId, tenantId, siteUrl: 'https://FIRMA.sharepoint.com/sites/TEAM', folder: 'LinkedInStudio' }
-const CLOUD_CFG = { url: '', anonKey: '', ms: null };
+const CLOUD_CFG = { url: '', anonKey: '', ms: { clientId: 'f63e7de2-f4dd-47d2-8447-527bd73db06f', tenantId: '71487822-a50b-48d0-9a13-5d854e9881c2', siteUrl: 'https://intrico.sharepoint.com/sites/SocialMedia', folder: 'LinkedInStudio' } };
 function _cloudCfgOn() { return !!((CLOUD_CFG.url && CLOUD_CFG.anonKey) || (CLOUD_CFG.ms && CLOUD_CFG.ms.clientId && CLOUD_CFG.ms.tenantId && CLOUD_CFG.ms.siteUrl)); }
 
 function loadApp() {
@@ -8569,10 +8569,14 @@ function cloudShowLogin(msg) {
     <input id="cloudPw" type="password" autocomplete="current-password" placeholder="Passwort" required style="width:100%;box-sizing:border-box;padding:11px 13px;border:1.5px solid #D9DCF0;border-radius:10px;font-size:14px;font-family:inherit">`}
     <div id="cloudLoginErr" style="min-height:18px;font-size:12px;color:#E03B3B;margin:10px 0 4px;line-height:1.45">${esc(msg || '')}</div>
     <button id="cloudLoginBtn" type="submit" style="width:100%;padding:12px;background:#5B63FE;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">${CLOUD.kind === 'ms' ? 'Mit Microsoft anmelden' : 'Anmelden'}</button>
+    ${CLOUD.kind === 'ms' && msg ? `<div style="text-align:center;margin-top:12px"><a onclick="cloudSkip()" style="cursor:pointer;font-size:12px;color:#5B63FE;text-decoration:underline">Trotzdem lokal weiterarbeiten (ohne Team-Abgleich)</a></div>` : ''}
     <div style="font-size:11px;color:#9AA0B4;margin-top:14px;line-height:1.5">${CLOUD.kind === 'ms' ? 'Anmeldung mit deinem Firmenkonto (Microsoft 365). Ohne Anmeldung sind keine Kundendaten sichtbar.' : 'Zugangsdaten bekommst du von deiner Administratorin. Ohne Anmeldung sind keine Kundendaten sichtbar.'}</div>
   </form>`;
   document.body.appendChild(d);
   setTimeout(() => document.getElementById('cloudEmail')?.focus(), 50);   // nur Supabase-Maske
+}
+function cloudSkip() {   // Notausgang, falls die Anmeldung scheitert: lokale Daten bleiben nutzbar, kein Abgleich in dieser Sitzung
+  CLOUD.enabled = false; document.getElementById('cloudLogin')?.remove(); renderApp(); _cloudStatus('off');
 }
 async function cloudDoLogin() {
   const btn = document.getElementById('cloudLoginBtn'), err = document.getElementById('cloudLoginErr');
